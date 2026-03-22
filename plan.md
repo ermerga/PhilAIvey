@@ -16,22 +16,39 @@ A Texas Hold'em poker tutor where the user plays against 1–5 AI opponents, eac
 | AI Decision Layer | Claude API (claude-sonnet-4-6) | LLM-based AI player decisions |
 | Frontend | React | Game UI, coaching panel |
 | State/Realtime | WebSockets | Push game state to client in real-time |
+| Cache | Redis | Equity calc cache, active session state |
+| Database | PostgreSQL | User profiles, hand history, session stats |
+| Containerization | Docker + Docker Compose | Local dev and deployment orchestration |
 
 ---
 
 ## Architecture
 
 ```
-React Frontend
-    |
-    | WebSocket / REST
-    v
-FastAPI Backend
-    ├── GameManager        — orchestrates PyPokerEngine game loop
-    ├── AIPlayerAgent      — wraps each AI, calls Claude API with context
-    ├── HandEvaluator      — wraps treys, computes hand strength + equity
-    ├── CoachingEngine     — builds per-decision coaching summary for user
-    └── PhilTutor          — AI Phil Ivey tutor, fires on every user turn
+┌─────────────────────────────────────────────────────┐
+│                  Docker Compose                      │
+│                                                      │
+│  ┌──────────────┐        ┌──────────────────────┐   │
+│  │ React/nginx  │◄──────►│   FastAPI Backend     │   │
+│  │  (port 3000) │  WS +  │     (port 8000)       │   │
+│  └──────────────┘  REST  │                       │   │
+│                          │  ├── GameManager       │   │
+│                          │  ├── AIPlayerAgent     │   │
+│                          │  ├── HandEvaluator     │   │
+│                          │  ├── CoachingEngine    │   │
+│                          │  └── PhilTutor         │   │
+│                          └──────┬──────┬──────────┘   │
+│                                 │      │              │
+│                    ┌────────────┘      └──────────┐  │
+│                    ▼                              ▼  │
+│            ┌──────────────┐           ┌────────────┐ │
+│            │  PostgreSQL   │           │   Redis    │ │
+│            │  (port 5432)  │           │ (port 6379)│ │
+│            └──────────────┘           └────────────┘ │
+└─────────────────────────────────────────────────────┘
+                          │
+                          ▼ (external)
+                    Claude API & other Ai's
 ```
 
 ---
@@ -65,9 +82,16 @@ Styles are shuffled randomly each new game so the user must re-profile opponents
 Uses `treys` to compute:
 - **Absolute hand rank** (1 = Royal Flush, 7462 = worst)
 - **Hand category** (e.g., "Two Pair, Aces and Kings")
-- **Equity estimate** — Monte Carlo simulation against range of opponent hands
+- **Outs count** — number of cards that improve the hand (used to teach Rule of 2 and 4)
+- **Equity estimate (internal only)** — Monte Carlo simulation used by Phil and the Coaching Engine for accurate grading; never shown raw to the user
 - **Pot odds** — required call / (required call + pot)
-- **Expected value** — rough EV given equity vs pot odds
+- **Expected value** — rough EV given internal equity vs pot odds
+
+#### Equity Philosophy
+Monte Carlo runs **internally** only. The user-facing layer teaches estimation, not consumption:
+- **Rule of 2 and 4** — Phil walks the user through counting outs and applying the multiplier
+- The true equity is used by Phil to verify whether the user's estimate and decision were correct
+- After the user acts, Phil reveals the actual equity as a teaching moment ("Your estimate was close — the real number was 34%")
 
 ### 4. AI Context Payload
 Every AI decision call includes:
@@ -89,23 +113,29 @@ Every AI decision call includes:
 ```
 
 ### 5. Coaching Engine
-After every **user decision**, the coaching panel shows:
-- Hand strength + equity
-- Pot odds vs. equity (was the call +EV?)
-- What each AI likely holds (estimated range)
-- Whether the user's action was optimal, acceptable, or a mistake
-- Brief explanation (1–2 sentences)
+After every **user decision**, the coaching panel shows (content filtered by skill level):
+
+| | Beginner | Intermediate | Advanced |
+|---|---|---|---|
+| Hand category | ✅ shown | ✅ shown | ✅ shown |
+| Outs count | ✅ shown | ✅ shown | ✅ shown |
+| Rule of 2&4 walkthrough | ✅ Phil explains | User prompted to calculate | Not shown — assumed known |
+| True equity (post-decision) | ✅ revealed after | ✅ revealed after | ✅ revealed after |
+| Pot odds | simplified ratio | exact % | exact % + EV |
+| Opponent ranges | not shown | basic range labels | full range breakdown |
+| Decision grade | ✅ | ✅ | ✅ |
+| Phil's explanation | plain language | guided questions | peer-level critique |
 
 ### 6. Phil Ivey AI Tutor (`PhilTutor`)
 Every time it is the **user's turn to act**, an AI Phil Ivey avatar pops up and offers proactive coaching advice — before the user makes their decision. The depth and vocabulary of the advice scales with the selected skill level, but **Phil is always a full conversational coach at every level**. The user can ask Phil any question at any point ("why would I fold here?", "what does pot odds mean?", "is this a bluff?") and Phil responds in full context of the current hand.
 
 #### Skill Levels
 
-| Level | Default Advice Focus | Language & Depth |
+| Level | What Phil Teaches | How Phil Teaches It |
 |---|---|---|
-| **Beginner** | Hand strength category, simple fold/call/raise guidance, basic position ("you're last to act — that's good") | Plain language, no jargon, analogies. Phil explains every term he uses. Direct: "Your hand is weak. I'd fold here." |
-| **Intermediate** | Equity vs. ranges, pot odds vs. equity, basic opponent reads, continuation bets, position leverage | Introduces poker terminology with brief explanations. Phil asks guiding questions instead of just giving answers — builds thinking habits. |
-| **Advanced** | Range vs. range equity, GTO vs. exploitative adjustments, SPR, meta-game, table image | Full poker vocabulary, peer-level discussion. Phil challenges reasoning: "What range are you putting them on, and why?" |
+| **Beginner** | Hand strength categories, basic position, simple pot odds as ratios ("you need to call $10 to win $30 — that's 3-to-1"), introduction to outs | Direct and concrete. Phil names the hand, says whether it's strong or weak, and explains what he'd do. Invites questions freely. No numbers shown until after the decision. |
+| **Intermediate** | Rule of 2 and 4 (Phil walks through outs counting), pot odds as %, basic opponent reads, continuation bets, position leverage | Phil prompts the user to estimate before acting: "You have a flush draw — how many outs do you have? Multiply by 4. What do you get?" Reveals true equity after the decision and compares to their estimate. |
+| **Advanced** | Range vs. range equity estimation, GTO vs. exploitative adjustments, SPR, meta-game, table image | Phil treats the user as a peer. No handholding — challenges their reasoning: "What range are you putting them on and why? Is a call better than a raise here given their stack?" True equity revealed post-decision for calibration. |
 
 #### Behavior
 - Phil's opening advice fires automatically when `current_actor == human_player`
@@ -160,21 +190,42 @@ User:   === It's Your Turn ===
 
 ---
 
-## Data Models
+## Data & Storage
 
-```python
-GameSession
-  id, players[], community_cards[], pot, street, current_actor, hand_history[]
-
-Player
-  id, name, stack, hole_cards, is_human, play_style, action_history[]
-
-Action
-  player_id, action_type (fold/call/raise), amount, street, timestamp
-
-HandResult
-  winners[], pot_distributed, showdown_hands[]
+### PostgreSQL — Persistent Data
 ```
+users
+  id, username, skill_level, created_at
+
+sessions
+  id, user_id, started_at, ended_at, num_opponents, starting_stack
+
+hands
+  id, session_id, hand_number, community_cards, pot, winners[], started_at
+
+actions
+  id, hand_id, player_id, action_type (fold/call/raise), amount, street, timestamp
+
+player_session_stats
+  id, session_id, player_id, is_human, play_style,
+  vpip, pfr, total_hands, hands_won, net_chips
+
+tutor_conversations
+  id, hand_id, skill_level, messages[] (role + content), created_at
+```
+
+### Redis — Ephemeral / Fast Access
+```
+game:{session_id}:state     → full GameSession JSON (active hand state)
+game:{session_id}:players   → player stack/action cache for quick reads
+equity:{hand_key}           → cached Monte Carlo equity result (TTL: 1 hour)
+                              key = sorted(hole_cards) + sorted(community_cards)
+tutor:{session_id}:chat     → current hand's Phil conversation buffer
+                              (flushed to PostgreSQL on hand end)
+```
+
+### In-Memory (PyPokerEngine)
+Active game logic lives in the FastAPI process during a hand. Redis is the source of truth for state shared across requests or WebSocket connections.
 
 ---
 
@@ -259,9 +310,12 @@ User:   === Current Hand ===
 ## Development Phases
 
 ### Phase 1 — Core Game Loop
-- [ ] Set up FastAPI project structure
+- [ ] Set up project directory structure (backend / frontend / docker)
+- [ ] Write `docker-compose.yml` with FastAPI, React/nginx, PostgreSQL, Redis
+- [ ] Set up FastAPI app with SQLAlchemy models + Alembic migrations
+- [ ] Connect Redis client for session state
 - [ ] Integrate PyPokerEngine, wrap in `GameManager`
-- [ ] Implement `HandEvaluator` with treys
+- [ ] Implement `HandEvaluator` with treys + Redis equity cache
 - [ ] Basic WebSocket game state streaming
 - [ ] Stub AI players that act randomly
 
@@ -317,12 +371,66 @@ treys
 anthropic
 websockets
 pydantic
+asyncpg          # async PostgreSQL driver
+redis[asyncio]   # async Redis client
+sqlalchemy       # ORM for PostgreSQL models
+alembic          # DB migrations
 
 # Frontend
 react
 react-dom
 typescript
 tailwindcss
+
+# Infrastructure
+docker
+docker-compose
+postgres:16      # Docker image
+redis:7-alpine   # Docker image
+nginx:alpine     # Docker image (serves React build)
+```
+
+---
+
+## Docker Compose Services
+
+```yaml
+services:
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    env_file: .env
+    depends_on: [postgres, redis]
+
+  frontend:
+    build: ./frontend        # React build served via nginx
+    ports: ["3000:80"]
+    depends_on: [backend]
+
+  postgres:
+    image: postgres:16
+    volumes: [pgdata:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_DB: philaivey
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+  redis:
+    image: redis:7-alpine
+    volumes: [redisdata:/data]
+
+volumes:
+  pgdata:
+  redisdata:
+```
+
+### Environment Variables (`.env`)
+```
+ANTHROPIC_API_KEY=...
+POSTGRES_USER=...
+POSTGRES_PASSWORD=...
+POSTGRES_HOST=postgres
+REDIS_URL=redis://redis:6379
 ```
 
 ---
