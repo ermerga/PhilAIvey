@@ -4,8 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import get_redis
-from app.routers import game
+from app.routers import game, tutor
 from app.services.game_manager import game_manager
+from app.services.phil_tutor import phil_tutor
 
 
 @asynccontextmanager
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
     """
     redis = get_redis()
     game_manager.redis = redis
+    phil_tutor.redis = redis
     yield
     # Shutdown: close the Redis connection cleanly
     await redis.aclose()
@@ -45,6 +47,7 @@ app.add_middleware(
 # Routers
 # ---------------------------------------------------------------------------
 app.include_router(game.router)
+app.include_router(tutor.router)
 
 
 # ---------------------------------------------------------------------------

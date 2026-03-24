@@ -34,7 +34,9 @@ export interface GameState {
 }
 
 // Shape of every message received over the WebSocket
-export interface WebSocketMessage {
-  type: "game_state";
-  data: GameState;
-}
+export type WebSocketMessage =
+  | { type: "game_state"; data: GameState }
+  | { type: "ai_thinking"; player_id: string; player_name: string }
+  | { type: "phil_stream_start" }
+  | { type: "phil_stream_chunk"; content: string }
+  | { type: "phil_stream_end" };

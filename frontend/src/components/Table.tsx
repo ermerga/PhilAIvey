@@ -2,9 +2,10 @@ import type { GameState, Player } from "../types";
 
 interface TableProps {
   gameState: GameState;
+  thinkingPlayerId: string | null;
 }
 
-export function Table({ gameState }: TableProps) {
+export function Table({ gameState, thinkingPlayerId }: TableProps) {
   const {
     players,
     community_cards,
@@ -46,6 +47,7 @@ export function Table({ gameState }: TableProps) {
             player={player}
             isCurrentActor={player.id === current_actor}
             isWinner={winners.includes(player.id)}
+            isThinking={player.id === thinkingPlayerId}
           />
         ))}
       </div>
@@ -75,9 +77,10 @@ interface PlayerSeatProps {
   player: Player;
   isCurrentActor: boolean;
   isWinner: boolean;
+  isThinking: boolean;
 }
 
-function PlayerSeat({ player, isCurrentActor, isWinner }: PlayerSeatProps) {
+function PlayerSeat({ player, isCurrentActor, isWinner, isThinking }: PlayerSeatProps) {
   const seatStyle = {
     ...styles.seat,
     ...(player.is_human ? styles.humanSeat : {}),
@@ -94,7 +97,8 @@ function PlayerSeat({ player, isCurrentActor, isWinner }: PlayerSeatProps) {
           {player.name}
           {player.is_human && " (You)"}
         </span>
-        {isCurrentActor && <span style={styles.actingBadge}>Acting</span>}
+        {isThinking && <span style={styles.thinkingBadge}>Thinking...</span>}
+        {isCurrentActor && !isThinking && <span style={styles.actingBadge}>Acting</span>}
         {player.is_folded && <span style={styles.foldedBadge}>Folded</span>}
         {player.is_allin && <span style={styles.allinBadge}>All-in</span>}
         {isWinner && <span style={styles.winnerBadge}>Winner</span>}
@@ -237,6 +241,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#e2e8f0",
     fontWeight: "bold",
     fontSize: "13px",
+  },
+  thinkingBadge: {
+    backgroundColor: "#7c3aed",
+    color: "#ede9fe",
+    fontSize: "10px",
+    padding: "1px 5px",
+    borderRadius: "4px",
+    fontWeight: "bold",
+    fontStyle: "italic",
   },
   actingBadge: {
     backgroundColor: "#f0c040",

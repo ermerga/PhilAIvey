@@ -4,6 +4,7 @@ import { newGame, submitAction, startHand } from "./api";
 import { useGameSocket } from "./hooks/useGameSocket";
 import { Table } from "./components/Table";
 import { ActionBar } from "./components/ActionBar";
+import { PhilPanel } from "./components/PhilPanel";
 
 type SkillLevel = "beginner" | "intermediate" | "advanced";
 
@@ -14,14 +15,31 @@ export default function App() {
   const [numOpponents, setNumOpponents] = useState(2);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [thinkingPlayerId, setThinkingPlayerId] = useState<string | null>(null);
+  const [philText, setPhilText] = useState("");
+  const [isPhilStreaming, setIsPhilStreaming] = useState(false);
 
   // useCallback keeps the function reference stable so the WebSocket hook
   // doesn't reconnect every time App re-renders
   const handleSocketUpdate = useCallback((state: GameState) => {
+    setThinkingPlayerId(null); // clear thinking state when a new game_state arrives
     setGameState(state);
   }, []);
 
-  useGameSocket(sessionId, handleSocketUpdate);
+  const handleAiThinking = useCallback((playerId: string) => {
+    setThinkingPlayerId(playerId);
+  }, []);
+
+  const handlePhilChunk = useCallback((content: string) => {
+    setIsPhilStreaming(true);
+    setPhilText((prev) => prev + content);
+  }, []);
+
+  const handlePhilDone = useCallback(() => {
+    setIsPhilStreaming(false);
+  }, []);
+
+  useGameSocket(sessionId, handleSocketUpdate, handleAiThinking, handlePhilChunk, handlePhilDone);
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -30,6 +48,8 @@ export default function App() {
   async function handleStartGame() {
     setError(null);
     setLoading(true);
+    setPhilText("");
+    setIsPhilStreaming(false);
     try {
       const res = await newGame(numOpponents, skillLevel);
       setSessionId(res.session_id);
@@ -48,7 +68,7 @@ export default function App() {
     if (!sessionId) return;
     setError(null);
     try {
-      const updated = await submitAction(sessionId, action, amount);
+      const updated = await submitAction(sessionId, action, amount, skillLevel);
       setGameState(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed.");
@@ -58,8 +78,10 @@ export default function App() {
   async function handleNextHand() {
     if (!sessionId) return;
     setError(null);
+    setPhilText("");
+    setIsPhilStreaming(false);
     try {
-      const updated = await startHand(sessionId);
+      const updated = await startHand(sessionId, skillLevel);
       setGameState(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start next hand.");
@@ -129,6 +151,7 @@ export default function App() {
 
   return (
     <div style={styles.page}>
+      <style>{`@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
       <div style={styles.game}>
         {/* Header */}
         <div style={styles.header}>
@@ -149,7 +172,7 @@ export default function App() {
         {error && <div style={styles.error}>{error}</div>}
 
         {/* Poker table */}
-        <Table gameState={gameState} />
+        <Table gameState={gameState} thinkingPlayerId={thinkingPlayerId} />
 
         {/* Next hand button — shown after a hand ends */}
         {gameState.is_hand_over && (
@@ -166,6 +189,15 @@ export default function App() {
             onAction={handleAction}
           />
         )}
+
+        {/* Phil Ivey coaching panel */}
+        <PhilPanel
+          sessionId={sessionId}
+          skillLevel={skillLevel}
+          philText={philText}
+          isStreaming={isPhilStreaming}
+          isMyTurn={isMyTurn}
+        />
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from app.services.game_manager import game_manager
+from app.services.phil_tutor import phil_tutor
 from app.ws.manager import manager as ws_manager
 
 router = APIRouter(prefix="/game", tags=["game"])
@@ -21,6 +22,11 @@ class NewGameRequest(BaseModel):
 class ActionRequest(BaseModel):
     action: str = Field(..., pattern="^(fold|call|raise)$")
     amount: int = Field(default=0, ge=0)
+    skill_level: str = Field(default="beginner", pattern="^(beginner|intermediate|advanced)$")
+
+
+class StartHandRequest(BaseModel):
+    skill_level: str = Field(default="beginner", pattern="^(beginner|intermediate|advanced)$")
 
 
 # ---------------------------------------------------------------------------
@@ -39,8 +45,17 @@ async def new_game(body: NewGameRequest):
         num_opponents=body.num_opponents,
         starting_stack=body.starting_stack,
     )
-    state = game_manager.start_hand(state.session_id)
+    await phil_tutor.clear_history(state.session_id)
+    state = await game_manager.start_hand(state.session_id, broadcast=ws_manager.broadcast)
     await game_manager.save_to_redis(state)
+
+    if not state.is_hand_over and state.current_actor == "human":
+        await phil_tutor.fire_opening_advice(
+            session_id=state.session_id,
+            state=state,
+            skill_level=body.skill_level,
+            broadcast=ws_manager.broadcast,
+        )
 
     return {
         "session_id": state.session_id,
@@ -69,10 +84,11 @@ async def submit_action(session_id: str, body: ActionRequest):
     also returned directly in the HTTP response.
     """
     try:
-        state = game_manager.apply_human_action(
+        state = await game_manager.apply_human_action(
             session_id=session_id,
             action=body.action,
             amount=body.amount,
+            broadcast=ws_manager.broadcast,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -83,11 +99,19 @@ async def submit_action(session_id: str, body: ActionRequest):
     await ws_manager.broadcast(session_id, {"type": "game_state", "data": serialized})
     await game_manager.save_to_redis(state)
 
+    if not state.is_hand_over and state.current_actor == "human":
+        await phil_tutor.fire_opening_advice(
+            session_id=session_id,
+            state=state,
+            skill_level=body.skill_level,
+            broadcast=ws_manager.broadcast,
+        )
+
     return serialized
 
 
 @router.post("/{session_id}/start-hand")
-async def start_hand(session_id: str):
+async def start_hand(session_id: str, body: StartHandRequest = StartHandRequest()):
     """
     Deal a new hand. Called by the frontend after a hand ends and the user
     clicks "Deal" (or equivalent).
@@ -98,11 +122,20 @@ async def start_hand(session_id: str):
     if not state.is_hand_over:
         raise HTTPException(status_code=400, detail="Current hand is still in progress.")
 
-    state = game_manager.start_hand(session_id)
+    await phil_tutor.clear_history(session_id)
+    state = await game_manager.start_hand(session_id, broadcast=ws_manager.broadcast)
     serialized = game_manager.serialize_for_client(state)
 
     await ws_manager.broadcast(session_id, {"type": "game_state", "data": serialized})
     await game_manager.save_to_redis(state)
+
+    if not state.is_hand_over and state.current_actor == "human":
+        await phil_tutor.fire_opening_advice(
+            session_id=session_id,
+            state=state,
+            skill_level=body.skill_level,
+            broadcast=ws_manager.broadcast,
+        )
 
     return serialized
 

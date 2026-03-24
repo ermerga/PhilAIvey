@@ -39,12 +39,13 @@ export async function newGame(
 export async function submitAction(
   sessionId: string,
   action: "fold" | "call" | "raise",
-  amount: number = 0
+  amount: number = 0,
+  skillLevel: string = "beginner"
 ): Promise<GameState> {
   const res = await fetch(`${BASE_URL}/game/${sessionId}/action`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, amount }),
+    body: JSON.stringify({ action, amount, skill_level: skillLevel }),
   });
   return handleResponse(res);
 }
@@ -52,9 +53,14 @@ export async function submitAction(
 // ---------------------------------------------------------------------------
 // Deal the next hand after the current one has ended.
 // ---------------------------------------------------------------------------
-export async function startHand(sessionId: string): Promise<GameState> {
+export async function startHand(
+  sessionId: string,
+  skillLevel: string = "beginner"
+): Promise<GameState> {
   const res = await fetch(`${BASE_URL}/game/${sessionId}/start-hand`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skill_level: skillLevel }),
   });
   return handleResponse(res);
 }

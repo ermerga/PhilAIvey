@@ -8,15 +8,15 @@ const WS_BASE = "ws://localhost:8000";
 // ---------------------------------------------------------------------------
 // useGameSocket
 //
-// Opens a WebSocket connection for a given session and calls onStateUpdate
-// whenever the backend pushes a new game state.
-//
-// The component using this hook doesn't need to know anything about WebSockets
-// — it just provides a sessionId and a callback to receive state updates.
+// Opens a WebSocket connection for a given session and calls the appropriate
+// callback for each message type the backend sends.
 // ---------------------------------------------------------------------------
 export function useGameSocket(
   sessionId: string | null,
-  onStateUpdate: (state: GameState) => void
+  onStateUpdate: (state: GameState) => void,
+  onAiThinking: (playerId: string, playerName: string) => void,
+  onPhilChunk: (content: string) => void,
+  onPhilDone: () => void,
 ) {
   // useRef stores the WebSocket instance without triggering re-renders.
   // If we used useState here, updating the socket would cause the component
@@ -40,6 +40,12 @@ export function useGameSocket(
         const message: WebSocketMessage = JSON.parse(event.data);
         if (message.type === "game_state") {
           onStateUpdate(message.data);
+        } else if (message.type === "ai_thinking") {
+          onAiThinking(message.player_id, message.player_name);
+        } else if (message.type === "phil_stream_chunk") {
+          onPhilChunk(message.content);
+        } else if (message.type === "phil_stream_end") {
+          onPhilDone();
         }
       } catch {
         console.error("[WebSocket] Failed to parse message:", event.data);

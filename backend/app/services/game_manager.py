@@ -1,8 +1,9 @@
+import asyncio
 import json
 import random
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from pypokerengine.engine.action_checker import ActionChecker
 from pypokerengine.engine.pay_info import PayInfo
@@ -162,11 +163,20 @@ class GameManager:
         self._active_games[session_id] = state
         return state
 
-    def start_hand(self, session_id: str) -> GameState:
+    def get_session(self, session_id: str) -> Optional[GameState]:
+        """Return the active GameState for a session, or None if not found."""
+        return self._active_games.get(session_id)
+
+    async def start_hand(
+        self, session_id: str, broadcast: Optional[Callable] = None
+    ) -> GameState:
         """
         Deal a new hand. Increments hand_number, resets per-hand state, calls
         RoundManager to deal hole cards, then runs AI turns if the first actor
         is not the human.
+
+        broadcast : optional async callable(session_id, message_dict) — used to
+                    push ai_thinking and game_state updates mid-loop.
         """
         state = self._require_state(session_id)
         state.hand_number += 1
@@ -199,20 +209,22 @@ class GameManager:
 
         # If the first actor is an AI, run their turns automatically
         if state.current_actor and not self._is_human_turn(state):
-            state = self._run_ai_actions(state)
+            state = await self._run_ai_actions(state, broadcast)
 
         self._active_games[session_id] = state
         return state
 
-    def apply_human_action(
-        self, session_id: str, action: str, amount: int = 0
+    async def apply_human_action(
+        self, session_id: str, action: str, amount: int = 0,
+        broadcast: Optional[Callable] = None,
     ) -> GameState:
         """
         Apply the human player's action, then run AI turns until it is the
         human's turn again or the hand ends.
 
-        action : "fold" | "call" | "raise"
-        amount : chip amount (only relevant for raise)
+        action    : "fold" | "call" | "raise"
+        amount    : chip amount (only relevant for raise)
+        broadcast : optional async callable(session_id, message_dict)
         """
         state = self._require_state(session_id)
 
@@ -235,7 +247,7 @@ class GameManager:
 
         # Run AI turns until back to the human or the hand ends
         if not state.is_hand_over and not self._is_human_turn(state):
-            state = self._run_ai_actions(state)
+            state = await self._run_ai_actions(state, broadcast)
 
         self._active_games[session_id] = state
         return state
@@ -301,12 +313,33 @@ class GameManager:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _run_ai_actions(self, state: GameState) -> GameState:
+    async def _run_ai_actions(
+        self, state: GameState, broadcast: Optional[Callable] = None
+    ) -> GameState:
         """
         Loop through AI turns automatically until it is the human's turn
         or the hand ends. Uses stub random actions in Phase 1.
+
+        Before each action: broadcasts ai_thinking so the UI shows who's thinking.
+        Waits 3 seconds to simulate the AI deliberating.
+        After each action: broadcasts the updated game_state.
         """
         while not state.is_hand_over and not self._is_human_turn(state):
+            acting_player = self._get_player(state, state.current_actor)
+
+            # Tell the frontend this AI is now thinking
+            if broadcast and acting_player:
+                await broadcast(state.session_id, {
+                    "type": "ai_thinking",
+                    "player_id": acting_player.id,
+                    "player_name": acting_player.name,
+                })
+
+            # Pause so the UI has time to show the thinking state
+            await asyncio.sleep(3)
+
+            # Capture the actor before _extract_state overwrites current_actor
+            actor_id = state.current_actor
             action, amount = self._stub_ai_action(state.valid_actions)
 
             engine_state, messages = RoundManager.apply_action(
@@ -315,11 +348,18 @@ class GameManager:
             self._extract_state(state, engine_state, messages)
 
             # Record the action in the AI player's session history
-            actor = self._get_player(state, state.current_actor)
+            actor = self._get_player(state, actor_id)
             if actor:
                 actor.action_history.append(
                     {"street": state.street, "action": action, "amount": amount}
                 )
+
+            # Broadcast updated state so the UI reflects the action immediately
+            if broadcast:
+                await broadcast(state.session_id, {
+                    "type": "game_state",
+                    "data": self.serialize_for_client(state),
+                })
 
         return state
 
