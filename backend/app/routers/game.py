@@ -49,14 +49,6 @@ async def new_game(body: NewGameRequest):
     state = await game_manager.start_hand(state.session_id, broadcast=ws_manager.broadcast)
     await game_manager.save_to_redis(state)
 
-    if not state.is_hand_over and state.current_actor == "human":
-        await phil_tutor.fire_opening_advice(
-            session_id=state.session_id,
-            state=state,
-            skill_level=body.skill_level,
-            broadcast=ws_manager.broadcast,
-        )
-
     return {
         "session_id": state.session_id,
         "skill_level": body.skill_level,
@@ -210,13 +202,20 @@ async def get_opponents(session_id: str):
 
 
 @router.websocket("/{session_id}/stream")
-async def game_stream(websocket: WebSocket, session_id: str):
+async def game_stream(
+    websocket: WebSocket,
+    session_id: str,
+    skill_level: str = "beginner",
+):
     """
     Persistent WebSocket connection for a game session.
 
     The frontend opens this connection on game start and keeps it open.
     Whenever any player acts, the backend broadcasts the full updated game
     state here so the UI can re-render without polling.
+
+    skill_level is passed as a query param so Phil knows how to pitch
+    his advice when he auto-fires on connect.
     """
     state = game_manager.get_state(session_id)
     if not state:
@@ -230,6 +229,17 @@ async def game_stream(websocket: WebSocket, session_id: str):
         "type": "game_state",
         "data": game_manager.serialize_for_client(state),
     })
+
+    # Fire Phil's opening advice now that the socket is confirmed open.
+    # This is the reliable trigger point — firing from HTTP endpoints races
+    # against the socket connection and loses when the human acts first.
+    if not state.is_hand_over and state.current_actor == "human":
+        await phil_tutor.fire_opening_advice(
+            session_id=session_id,
+            state=state,
+            skill_level=skill_level,
+            broadcast=ws_manager.broadcast,
+        )
 
     try:
         # Keep the connection alive — we only send from the server side,
