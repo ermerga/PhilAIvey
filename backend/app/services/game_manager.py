@@ -88,6 +88,9 @@ class GameState:
     winners: list[str]                  # player ids
     valid_actions: list[dict] = field(default_factory=list)
     engine_state: Optional[dict] = None # pypokerengine internal state — never sent to client
+    dealer_id: Optional[str] = None
+    small_blind_id: Optional[str] = None
+    big_blind_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +200,17 @@ class GameManager:
         # automatically on subsequent hands via shift_dealer_btn.
         table = self._build_engine_table(state)
         table.set_blind_pos(0, 1)
+
+        # Record which player holds each position this hand.
+        # seat 0 = SB, seat 1 = BB (as set above); dealer = seat before SB.
+        seat_players = table.seats.players
+        num_seats = len(seat_players)
+        if num_seats > 0:
+            state.small_blind_id = seat_players[0].uuid
+            state.big_blind_id = seat_players[1 % num_seats].uuid
+            dealer_idx = (num_seats - 1)  # seat before seat 0
+            state.dealer_id = seat_players[dealer_idx].uuid
+
         engine_state, messages = RoundManager.start_new_round(
             state.hand_number,
             state.small_blind,
@@ -287,6 +301,9 @@ class GameManager:
             "is_hand_over": state.is_hand_over,
             "winners": state.winners,
             "valid_actions": state.valid_actions,
+            "dealer_id": state.dealer_id,
+            "small_blind_id": state.small_blind_id,
+            "big_blind_id": state.big_blind_id,
         }
 
     # ------------------------------------------------------------------

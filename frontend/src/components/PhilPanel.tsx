@@ -55,7 +55,7 @@ export function PhilPanel({
   const inputDisabled = !isMyTurn || sending || isStreaming;
 
   return (
-    <div style={styles.panel}>
+    <div className={isMyTurn ? "phil-popup" : "phil-popup phil-popup--hidden"}>
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.avatar}>PI</div>
@@ -117,15 +117,6 @@ export function PhilPanel({
 // ---------------------------------------------------------------------------
 
 const styles: Record<string, React.CSSProperties> = {
-  panel: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-    padding: "16px",
-    backgroundColor: "#1a1a2e",
-    borderRadius: "12px",
-    border: "2px solid #2a2a4e",
-  },
   header: {
     display: "flex",
     alignItems: "center",

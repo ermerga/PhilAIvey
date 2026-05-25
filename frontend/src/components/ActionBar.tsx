@@ -104,7 +104,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "14px",
   },
   button: {
-    padding: "10px 20px",
+    padding: "13px 20px",
     fontSize: "15px",
     fontWeight: "bold",
     border: "none",

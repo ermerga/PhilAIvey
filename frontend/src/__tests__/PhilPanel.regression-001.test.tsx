@@ -16,7 +16,6 @@ describe('PhilPanel — markdown rendering', () => {
 
   it('renders **bold** as formatted text, not raw asterisks', () => {
     render(<PhilPanel {...baseProps} philText="**You should be raising.**" />)
-    const strong = screen.getByRole('strong') || document.querySelector('strong')
     // The text content should be the inner text without asterisks
     expect(screen.queryByText('**You should be raising.**')).not.toBeInTheDocument()
     expect(document.querySelector('strong')).toBeInTheDocument()

@@ -31,6 +31,9 @@ export interface GameState {
   is_hand_over: boolean;
   winners: string[];        // player ids of winners
   valid_actions: ValidAction[];
+  dealer_id: string | null;
+  small_blind_id: string | null;
+  big_blind_id: string | null;
 }
 
 // Shape of every message received over the WebSocket

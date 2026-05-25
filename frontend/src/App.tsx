@@ -151,7 +151,6 @@ export default function App() {
 
   return (
     <div style={styles.page}>
-      <style>{`@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
       <div style={styles.game}>
         {/* Header */}
         <div style={styles.header}>
@@ -171,15 +170,12 @@ export default function App() {
         {/* Error banner */}
         {error && <div style={styles.error}>{error}</div>}
 
-        {/* Poker table */}
-        <Table gameState={gameState} thinkingPlayerId={thinkingPlayerId} />
-
-        {/* Next hand button — shown after a hand ends */}
-        {gameState.is_hand_over && (
-          <button style={styles.nextHandBtn} onClick={handleNextHand}>
-            Deal Next Hand
-          </button>
-        )}
+        {/* Poker table — includes the Start Round overlay between hands */}
+        <Table
+          gameState={gameState}
+          thinkingPlayerId={thinkingPlayerId}
+          onStartRound={handleNextHand}
+        />
 
         {/* Action controls — shown while hand is in progress */}
         {!gameState.is_hand_over && (
@@ -214,7 +210,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontFamily: "'Segoe UI', system-ui, sans-serif",
+    fontFamily: "'DM Sans', system-ui, sans-serif",
     color: "#e2e8f0",
     padding: "16px",
   },
@@ -307,7 +303,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   newGameBtn: {
     marginLeft: "auto",
-    padding: "6px 14px",
+    padding: "10px 16px",
     backgroundColor: "transparent",
     border: "1px solid #2a2a4e",
     color: "#94a3b8",
@@ -321,17 +317,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fca5a5",
     borderRadius: "6px",
     fontSize: "13px",
-  },
-  nextHandBtn: {
-    padding: "14px",
-    fontSize: "15px",
-    fontWeight: "bold",
-    backgroundColor: "#14532d",
-    color: "#86efac",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-    alignSelf: "center",
-    width: "200px",
   },
 };

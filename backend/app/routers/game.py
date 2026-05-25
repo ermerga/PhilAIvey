@@ -46,7 +46,6 @@ async def new_game(body: NewGameRequest):
         starting_stack=body.starting_stack,
     )
     await phil_tutor.clear_history(state.session_id)
-    state = await game_manager.start_hand(state.session_id, broadcast=ws_manager.broadcast)
     await game_manager.save_to_redis(state)
 
     return {
