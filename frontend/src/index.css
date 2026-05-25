@@ -109,3 +109,13 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* Phil Ivey panel markdown rendering */
+.phil-message p { margin: 0 0 10px; color: #e2e8f0; font-size: 14px; line-height: 1.6; }
+.phil-message p:last-child { margin-bottom: 0; }
+.phil-message strong { color: #f0c040; font-weight: bold; }
+.phil-message em { color: #94a3b8; font-style: italic; }
+.phil-message h1, .phil-message h2, .phil-message h3 { color: #f0c040; font-size: 14px; font-weight: bold; margin: 8px 0 4px; }
+.phil-message hr { border: none; border-top: 1px solid #2a2a4e; margin: 10px 0; }
+.phil-message ul, .phil-message ol { margin: 4px 0 10px 16px; color: #e2e8f0; font-size: 14px; line-height: 1.6; padding-left: 12px; }
+.phil-message li { margin-bottom: 2px; }

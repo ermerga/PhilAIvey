@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 const API_BASE = "/api";
 
@@ -68,10 +69,10 @@ export function PhilPanel({
       {/* Message area */}
       <div style={styles.messageArea}>
         {philText ? (
-          <p style={styles.messageText}>
-            {philText}
+          <div style={styles.messageText} className="phil-message">
+            <ReactMarkdown>{philText}</ReactMarkdown>
             {isStreaming && <span style={styles.cursor}>▍</span>}
-          </p>
+          </div>
         ) : (
           <p style={styles.placeholder}>
             {isMyTurn
@@ -174,7 +175,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#e2e8f0",
     fontSize: "14px",
     lineHeight: "1.6",
-    whiteSpace: "pre-wrap",
   },
   cursor: {
     display: "inline-block",
