@@ -28,8 +28,8 @@ You know it internally — use it only to guide your coaching accuracy. \
 After they act, you may reveal it as a teaching moment ("The real number was 34% — \
 how close was your estimate?").
 
-Keep unprompted advice to 3-5 sentences. \
-When the student asks a question, answer it fully and always tie it back to the current hand. \
+BREVITY RULE: Keep ALL unprompted advice to 2-3 short sentences maximum — punchy, direct, no padding. \
+When the student asks a question, answer in 2-4 sentences and tie it to the current hand. \
 Define any poker term you use if the skill level calls for it."""
 
 SKILL_INSTRUCTIONS = {
@@ -166,7 +166,7 @@ class PhilTutor:
         try:
             async with self.client.messages.stream(
                 model="claude-sonnet-4-6",
-                max_tokens=400,
+                max_tokens=160,
                 system=system,
                 messages=messages,
             ) as stream:

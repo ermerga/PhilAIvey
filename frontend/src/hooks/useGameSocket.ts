@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { GameState, WebSocketMessage } from "../types";
+import type { ActionFlash, GameState, WebSocketMessage } from "../types";
 
 // In Docker, nginx proxies /ws/* to the FastAPI backend as a WebSocket.
 // Outside Docker (local dev), point directly to the backend.
@@ -15,6 +15,7 @@ export function useGameSocket(
   sessionId: string | null,
   onStateUpdate: (state: GameState) => void,
   onAiThinking: (playerId: string, playerName: string) => void,
+  onPlayerActed: (flash: ActionFlash) => void,
   onPhilChunk: (content: string) => void,
   onPhilDone: () => void,
 ) {
@@ -42,6 +43,8 @@ export function useGameSocket(
           onStateUpdate(message.data);
         } else if (message.type === "ai_thinking") {
           onAiThinking(message.player_id, message.player_name);
+        } else if (message.type === "player_acted") {
+          onPlayerActed({ playerId: message.player_id, action: message.action, amount: message.amount });
         } else if (message.type === "phil_stream_chunk") {
           onPhilChunk(message.content);
         } else if (message.type === "phil_stream_end") {

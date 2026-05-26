@@ -69,6 +69,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState()}
         thinkingPlayerId={null}
+        actionFlash={null}
         onStartRound={vi.fn()}
       />
     );
@@ -80,6 +81,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState({ is_hand_over: true, winners: [] })}
         thinkingPlayerId={null}
+        actionFlash={null}
         onStartRound={vi.fn()}
       />
     );
@@ -91,6 +93,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState({ is_hand_over: false })}
         thinkingPlayerId={null}
+        actionFlash={null}
         onStartRound={vi.fn()}
       />
     );
@@ -103,6 +106,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState({ is_hand_over: true, winners: [] })}
         thinkingPlayerId={null}
+        actionFlash={null}
         onStartRound={onStartRound}
       />
     );
@@ -115,6 +119,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState({ current_actor: "human" })}
         thinkingPlayerId={null}
+        actionFlash={null}
         onStartRound={vi.fn()}
       />
     );
@@ -127,6 +132,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState({ current_actor: "ai_0" })}
         thinkingPlayerId="ai_0"
+        actionFlash={null}
         onStartRound={vi.fn()}
       />
     );
@@ -138,6 +144,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState({ is_hand_over: true, winners: ["human"] })}
         thinkingPlayerId={null}
+        actionFlash={null}
         onStartRound={vi.fn()}
       />
     );
@@ -150,6 +157,7 @@ describe("Table", () => {
       <Table
         gameState={makeGameState()}
         thinkingPlayerId={null}
+        actionFlash={null}
         onStartRound={vi.fn()}
       />
     );

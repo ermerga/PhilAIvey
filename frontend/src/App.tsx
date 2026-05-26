@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import type { GameState } from "./types";
+import type { ActionFlash, GameState } from "./types";
 import { newGame, submitAction, startHand } from "./api";
 import { useGameSocket } from "./hooks/useGameSocket";
 import { Table } from "./components/Table";
@@ -18,6 +18,7 @@ export default function App() {
   const [thinkingPlayerId, setThinkingPlayerId] = useState<string | null>(null);
   const [philText, setPhilText] = useState("");
   const [isPhilStreaming, setIsPhilStreaming] = useState(false);
+  const [actionFlash, setActionFlash] = useState<ActionFlash | null>(null);
 
   // useCallback keeps the function reference stable so the WebSocket hook
   // doesn't reconnect every time App re-renders
@@ -30,6 +31,11 @@ export default function App() {
     setThinkingPlayerId(playerId);
   }, []);
 
+  const handlePlayerActed = useCallback((flash: ActionFlash) => {
+    setActionFlash(flash);
+    setTimeout(() => setActionFlash(null), 900);
+  }, []);
+
   const handlePhilChunk = useCallback((content: string) => {
     setIsPhilStreaming(true);
     setPhilText((prev) => prev + content);
@@ -39,7 +45,7 @@ export default function App() {
     setIsPhilStreaming(false);
   }, []);
 
-  useGameSocket(sessionId, handleSocketUpdate, handleAiThinking, handlePhilChunk, handlePhilDone);
+  useGameSocket(sessionId, handleSocketUpdate, handleAiThinking, handlePlayerActed, handlePhilChunk, handlePhilDone);
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -76,14 +82,18 @@ export default function App() {
   }
 
   async function handleNextHand() {
-    if (!sessionId) return;
+    if (!sessionId || !gameState) return;
     setError(null);
     setPhilText("");
     setIsPhilStreaming(false);
+    const prevState = gameState;
+    // Dismiss the overlay immediately so users see AI thinking rather than waiting
+    setGameState({ ...gameState, is_hand_over: false });
     try {
       const updated = await startHand(sessionId, skillLevel);
       setGameState(updated);
     } catch (err) {
+      setGameState(prevState);
       setError(err instanceof Error ? err.message : "Failed to start next hand.");
     }
   }
@@ -174,6 +184,7 @@ export default function App() {
         <Table
           gameState={gameState}
           thinkingPlayerId={thinkingPlayerId}
+          actionFlash={actionFlash}
           onStartRound={handleNextHand}
         />
 

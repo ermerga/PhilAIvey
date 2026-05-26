@@ -1,12 +1,13 @@
-import type { GameState, Player } from "../types";
+import type { ActionFlash, GameState, Player } from "../types";
 
 interface TableProps {
   gameState: GameState;
   thinkingPlayerId: string | null;
+  actionFlash: ActionFlash | null;
   onStartRound: () => void;
 }
 
-export function Table({ gameState, thinkingPlayerId, onStartRound }: TableProps) {
+export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }: TableProps) {
   const {
     players,
     community_cards,
@@ -23,7 +24,30 @@ export function Table({ gameState, thinkingPlayerId, onStartRound }: TableProps)
   } = gameState;
 
   const human = players.find((p) => p.is_human) ?? null;
-  const aiPlayers = players.filter((p) => !p.is_human);
+
+  // Sort AI players in clockwise betting order starting from the player
+  // immediately after the human in the sitdown array. This makes seat p1
+  // (top-left) always the first AI clockwise from you, matching the visual
+  // left→right reading direction across the top of the table.
+  const humanIdx = players.findIndex((p) => p.is_human);
+  const aiPlayers = [
+    ...players.slice(humanIdx + 1),
+    ...players.slice(0, humanIdx),
+  ].filter((p) => !p.is_human);
+
+  // Maps AI count → clockwise visual positions going left-side → top →
+  // right-side so the betting flow reads naturally on screen.
+  const CLOCKWISE_SEATS: Record<number, string[]> = {
+    1: ["p3"],
+    2: ["p1", "p2"],
+    3: ["p1", "p3", "p2"],
+    4: ["p4", "p1", "p2", "p5"],
+    5: ["p4", "p1", "p3", "p2", "p5"],
+  };
+  function seatClass(idx: number): string {
+    const seats = CLOCKWISE_SEATS[aiPlayers.length] ?? aiPlayers.map((_, i) => `p${i + 1}`);
+    return `seat-pos--${seats[idx] ?? `p${idx + 1}`}`;
+  }
 
   function playerName(id: string | null): string {
     if (!id) return "—";
@@ -119,15 +143,16 @@ export function Table({ gameState, thinkingPlayerId, onStartRound }: TableProps)
                 isDealer={human.id === dealer_id}
                 isSB={human.id === small_blind_id}
                 isBB={human.id === big_blind_id}
+                actionFlash={actionFlash?.playerId === human.id ? actionFlash : null}
               />
             </div>
           )}
 
-          {/* AI seats — top left then top right */}
+          {/* AI seats — arranged clockwise from the human's position */}
           {aiPlayers.map((player, idx) => (
             <div
               key={player.id}
-              className={`seat-pos seat-pos--p${idx + 1}`}
+              className={`seat-pos ${seatClass(idx)}`}
             >
               <PlayerSeat
                 player={player}
@@ -137,6 +162,7 @@ export function Table({ gameState, thinkingPlayerId, onStartRound }: TableProps)
                 isDealer={player.id === dealer_id}
                 isSB={player.id === small_blind_id}
                 isBB={player.id === big_blind_id}
+                actionFlash={actionFlash?.playerId === player.id ? actionFlash : null}
               />
             </div>
           ))}
@@ -158,6 +184,7 @@ interface PlayerSeatProps {
   isDealer: boolean;
   isSB: boolean;
   isBB: boolean;
+  actionFlash: ActionFlash | null;
 }
 
 function PlayerSeat({
@@ -168,20 +195,41 @@ function PlayerSeat({
   isDealer,
   isSB,
   isBB,
+  actionFlash,
 }: PlayerSeatProps) {
+  const flashClass = actionFlash
+    ? `seat-card--flash-${actionFlash.action}`
+    : "";
+
   const cardClasses = [
     "seat-card",
-    isThinking ? "seat-card--purple" : isCurrentActor ? "seat-card--gold" : "",
+    flashClass || (isThinking ? "seat-card--purple" : isCurrentActor ? "seat-card--gold" : ""),
     player.is_folded ? "seat-card--folded" : "",
     isWinner ? "seat-card--winner" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
+  const ACTION_LABELS: Record<string, string> = {
+    fold: "Fold",
+    call: "Call",
+    raise: "Raise",
+  };
+
   return (
     <div className={cardClasses}>
       {/* Dealer button — white circle at top-right of card */}
       {isDealer && <div className="dealer-btn">D</div>}
+
+      {/* Action flash overlay label */}
+      {actionFlash && (
+        <div className={`action-label action-label--${actionFlash.action}`}>
+          {ACTION_LABELS[actionFlash.action]}
+          {actionFlash.action !== "fold" && actionFlash.amount > 0 && (
+            <span className="action-label__amount"> {actionFlash.amount}</span>
+          )}
+        </div>
+      )}
 
       <div style={styles.seatName}>
         {player.name}

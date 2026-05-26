@@ -86,11 +86,18 @@ async def submit_action(session_id: str, body: ActionRequest):
 
     serialized = game_manager.serialize_for_client(state)
 
-    # Broadcast updated state to all WebSocket connections for this session
+    # Broadcast the human's action for animation, then the updated state
+    await ws_manager.broadcast(session_id, {
+        "type": "player_acted",
+        "player_id": "human",
+        "action": body.action,
+        "amount": body.amount,
+    })
     await ws_manager.broadcast(session_id, {"type": "game_state", "data": serialized})
     await game_manager.save_to_redis(state)
 
     if not state.is_hand_over and state.current_actor == "human":
+        await phil_tutor.clear_history(session_id)
         await phil_tutor.fire_opening_advice(
             session_id=session_id,
             state=state,

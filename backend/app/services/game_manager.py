@@ -195,21 +195,9 @@ class GameManager:
             p.is_folded = False
             p.is_allin = False
 
-        # Build the engine table, set blind positions, then start the round.
-        # SB = seat 0, BB = seat 1. PyPokerEngine rotates the dealer button
-        # automatically on subsequent hands via shift_dealer_btn.
+        # Build the engine table and start the round. PyPokerEngine rotates
+        # dealer_btn automatically on each call to start_new_round.
         table = self._build_engine_table(state)
-        table.set_blind_pos(0, 1)
-
-        # Record which player holds each position this hand.
-        # seat 0 = SB, seat 1 = BB (as set above); dealer = seat before SB.
-        seat_players = table.seats.players
-        num_seats = len(seat_players)
-        if num_seats > 0:
-            state.small_blind_id = seat_players[0].uuid
-            state.big_blind_id = seat_players[1 % num_seats].uuid
-            dealer_idx = (num_seats - 1)  # seat before seat 0
-            state.dealer_id = seat_players[dealer_idx].uuid
 
         engine_state, messages = RoundManager.start_new_round(
             state.hand_number,
@@ -220,6 +208,17 @@ class GameManager:
 
         # Sync our state from the engine's initial state
         self._extract_state(state, engine_state, messages)
+
+        # Capture blind/dealer positions AFTER start_new_round has shifted the
+        # dealer button. dealer_btn points to the dealer seat; SB is +1, BB is +2.
+        t = engine_state["table"]
+        seat_players = t.seats.players
+        num_seats = len(seat_players)
+        if num_seats > 0:
+            d = t.dealer_btn
+            state.dealer_id = seat_players[d % num_seats].uuid
+            state.small_blind_id = seat_players[(d + 1) % num_seats].uuid
+            state.big_blind_id = seat_players[(d + 2) % num_seats].uuid
 
         # If the first actor is an AI, run their turns automatically
         if state.current_actor and not self._is_human_turn(state):
@@ -371,8 +370,14 @@ class GameManager:
                     {"street": state.street, "action": action, "amount": amount}
                 )
 
-            # Broadcast updated state so the UI reflects the action immediately
+            # Broadcast the action so the UI can animate it, then the new state
             if broadcast:
+                await broadcast(state.session_id, {
+                    "type": "player_acted",
+                    "player_id": actor_id,
+                    "action": action,
+                    "amount": amount,
+                })
                 await broadcast(state.session_id, {
                     "type": "game_state",
                     "data": self.serialize_for_client(state),

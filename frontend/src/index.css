@@ -201,6 +201,21 @@ code {
   right: 50px;
 }
 
+.seat-pos--p3 {
+  top: -148px;
+  left: calc(50% - 59px);
+}
+
+.seat-pos--p4 {
+  top: 50px;
+  left: -132px;
+}
+
+.seat-pos--p5 {
+  top: 50px;
+  right: -132px;
+}
+
 /* ── Seat card ────────────────────────────────────────────────────── */
 
 .seat-card {
@@ -363,6 +378,63 @@ code {
 .start-overlay__btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 36px rgba(240,192,64,0.55);
+}
+
+/* ── Player action flash animations (Style B) ────────────────────── */
+
+@keyframes flash-fold {
+  0%   { border-color: #ef4444; box-shadow: 0 0 0 3px #ef4444, 0 0 28px rgba(239,68,68,0.6); }
+  60%  { border-color: #ef4444; box-shadow: 0 0 0 4px #ef4444, 0 0 40px rgba(239,68,68,0.8); }
+  100% { border-color: #2a2a4e; box-shadow: none; }
+}
+
+@keyframes flash-call {
+  0%   { border-color: #3b82f6; box-shadow: 0 0 0 3px #3b82f6, 0 0 28px rgba(59,130,246,0.6); }
+  60%  { border-color: #3b82f6; box-shadow: 0 0 0 4px #3b82f6, 0 0 40px rgba(59,130,246,0.8); }
+  100% { border-color: #2a2a4e; box-shadow: none; }
+}
+
+@keyframes flash-raise {
+  0%   { border-color: #f0c040; box-shadow: 0 0 0 3px #f0c040, 0 0 28px rgba(240,192,64,0.6); }
+  60%  { border-color: #f0c040; box-shadow: 0 0 0 4px #f0c040, 0 0 40px rgba(240,192,64,0.8); }
+  100% { border-color: #2a2a4e; box-shadow: none; }
+}
+
+@keyframes action-label-fade {
+  0%   { opacity: 0; transform: translateY(-4px); }
+  15%  { opacity: 1; transform: translateY(0); }
+  70%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.seat-card--flash-fold  { animation: flash-fold  0.9s ease-out forwards; }
+.seat-card--flash-call  { animation: flash-call  0.9s ease-out forwards; }
+.seat-card--flash-raise { animation: flash-raise 0.9s ease-out forwards; }
+
+/* In-card action label overlay */
+.action-label {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  animation: action-label-fade 0.9s ease-out forwards;
+  z-index: 5;
+}
+
+.action-label--fold  { background: rgba(239,68,68,0.18);  color: #fca5a5; }
+.action-label--call  { background: rgba(59,130,246,0.18); color: #93c5fd; }
+.action-label--raise { background: rgba(240,192,64,0.18); color: #f0c040; }
+
+.action-label__amount {
+  font-weight: 400;
+  font-size: 11px;
+  opacity: 0.85;
 }
 
 /* ── Phil popup ───────────────────────────────────────────────────── */

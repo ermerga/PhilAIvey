@@ -40,6 +40,13 @@ export interface GameState {
 export type WebSocketMessage =
   | { type: "game_state"; data: GameState }
   | { type: "ai_thinking"; player_id: string; player_name: string }
+  | { type: "player_acted"; player_id: string; action: "fold" | "call" | "raise"; amount: number }
   | { type: "phil_stream_start" }
   | { type: "phil_stream_chunk"; content: string }
   | { type: "phil_stream_end" };
+
+export interface ActionFlash {
+  playerId: string;
+  action: "fold" | "call" | "raise";
+  amount: number;
+}
