@@ -195,9 +195,11 @@ class GameManager:
             p.is_folded = False
             p.is_allin = False
 
-        # Build the engine table and start the round. PyPokerEngine rotates
-        # dealer_btn automatically on each call to start_new_round.
+        # Build the engine table. set_blind_pos is required before start_new_round
+        # so the engine knows which seats pay the blinds (bb_pos() is called
+        # internally). Rotation across hands is a Phase 3 enhancement.
         table = self._build_engine_table(state)
+        table.set_blind_pos(0, 1)
 
         engine_state, messages = RoundManager.start_new_round(
             state.hand_number,
@@ -209,16 +211,19 @@ class GameManager:
         # Sync our state from the engine's initial state
         self._extract_state(state, engine_state, messages)
 
-        # Capture blind/dealer positions AFTER start_new_round has shifted the
-        # dealer button. dealer_btn points to the dealer seat; SB is +1, BB is +2.
+        # Capture blind/dealer positions from the engine's blind_pos settings.
+        # sb_pos() and bb_pos() are authoritative (the engine just used them
+        # to post blinds). Dealer is the seat immediately before the SB.
         t = engine_state["table"]
         seat_players = t.seats.players
         num_seats = len(seat_players)
         if num_seats > 0:
-            d = t.dealer_btn
-            state.dealer_id = seat_players[d % num_seats].uuid
-            state.small_blind_id = seat_players[(d + 1) % num_seats].uuid
-            state.big_blind_id = seat_players[(d + 2) % num_seats].uuid
+            sb = t.sb_pos()
+            bb = t.bb_pos()
+            dealer = (sb - 1 + num_seats) % num_seats
+            state.small_blind_id = seat_players[sb].uuid
+            state.big_blind_id = seat_players[bb].uuid
+            state.dealer_id = seat_players[dealer].uuid
 
         # If the first actor is an AI, run their turns automatically
         if state.current_actor and not self._is_human_turn(state):
