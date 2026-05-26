@@ -345,6 +345,15 @@ class GameManager:
         Waits 3 seconds to simulate the AI deliberating.
         After each action: broadcasts the updated game_state.
         """
+        # Push the current state immediately so the frontend shows the correct
+        # street and community cards before any ai_thinking event fires.
+        # Without this, the user sees the OLD street while an AI is "thinking."
+        if broadcast:
+            await broadcast(state.session_id, {
+                "type": "game_state",
+                "data": self.serialize_for_client(state),
+            })
+
         while not state.is_hand_over and not self._is_human_turn(state):
             acting_player = self._get_player(state, state.current_actor)
 
