@@ -444,3 +444,264 @@ code {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
 }
+
+/* ── Street reveal — slide + flip ────────────────────────────────── */
+
+/* Wrapper around each community card */
+.community-card-wrapper {
+  display: inline-flex;
+}
+
+/* Single compound animation: slide in from above, pause, then flip (squish → spring) */
+.community-card-wrapper--dealing {
+  animation: card-deal-reveal 0.72s both;
+}
+
+@keyframes card-deal-reveal {
+  0%   { opacity: 0; transform: translateY(-30px) scaleX(1); animation-timing-function: cubic-bezier(0.22, 1.4, 0.36, 1); }
+  42%  { opacity: 1; transform: translateY(0)     scaleX(1); animation-timing-function: ease-in; }
+  56%  { transform: translateY(0) scaleX(0);                 animation-timing-function: cubic-bezier(0.22, 1.4, 0.36, 1); }
+  100% { transform: translateY(0) scaleX(1); }
+}
+
+/* Two-phase flip kept for showdown hole card reveal (used later) */
+@keyframes card-flip-out {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+@keyframes card-flip-in {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* ── Winner announcement ──────────────────────────────────────────── */
+
+/* Gold pulsing border on the winner seat (distinct from static .seat-card--winner) */
+.seat-card--winner-announced {
+  border-color: #f0c040 !important;
+  animation: winner-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes winner-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px #f0c040, 0 0 20px rgba(240,192,64,0.4); }
+  50%       { box-shadow: 0 0 0 5px #f0c040, 0 0 40px rgba(240,192,64,0.7); }
+}
+
+/* "WINNER" badge that bounces into view above the seat card */
+.winner-badge {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #f0c040;
+  color: #111;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+  animation: winner-badge-enter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes winner-badge-enter {
+  from { opacity: 0; transform: translateX(-50%) scale(0.4); }
+  to   { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+
+/* Pot chip sweeps upward when winner is announced */
+.pot--sweep {
+  animation: pot-sweep 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes pot-sweep {
+  from { opacity: 1; transform: translateY(0)   scale(1);    }
+  to   { opacity: 0; transform: translateY(-40px) scale(0.7); }
+}
+
+/* Non-winner seats dim */
+.seat-card--loser-dim {
+  animation: seat-dim 0.4s ease forwards;
+}
+
+@keyframes seat-dim {
+  from { opacity: 1; }
+  to   { opacity: 0.38; }
+}
+
+/* ── Dealing card — JS-spawned flying card element ────────────────── */
+
+/* Absolutely positioned card that JS moves via transform during deal animation */
+.dealing-card {
+  position: fixed;
+  width: 28px;
+  height: 38px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #1e3a8a, #3730a3);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  pointer-events: none;
+  z-index: 100;
+  will-change: transform;
+}
+
+/* Card bounces when it "lands" at the seat */
+.dealing-card--land {
+  animation: card-land 0.18s cubic-bezier(0.22, 1.4, 0.36, 1) forwards;
+}
+
+@keyframes card-land {
+  0%   { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/* ── Showdown reveal ──────────────────────────────────────────────── */
+
+/* "SHOWDOWN" label that appears center-table */
+.showdown-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  color: #f0c040;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(240,192,64,0.8);
+  pointer-events: none;
+  z-index: 20;
+  white-space: nowrap;
+  animation: showdown-label-enter 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes showdown-label-enter {
+  from { transform: translate(-50%, -50%) scale(0);   opacity: 0; }
+  to   { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+}
+
+.showdown-label--exit {
+  animation: showdown-label-exit 0.3s ease-in forwards;
+}
+
+@keyframes showdown-label-exit {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+}
+
+/* Hand strength label that appears below player cards after reveal */
+.hand-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  text-align: center;
+  margin-top: 2px;
+  opacity: 0;
+  animation: hand-label-enter 0.25s ease forwards;
+}
+
+@keyframes hand-label-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Hole card flip reveal — the card element itself */
+.hole-card--flip-reveal {
+  animation: card-flip-out 0.14s ease-in forwards;
+}
+
+/* After JS swaps content, the --flip-in class is applied */
+.hole-card--flip-in {
+  animation: card-flip-in 0.22s cubic-bezier(0.22, 1.4, 0.36, 1) forwards;
+}
+
+/* Winner seat after showdown */
+.seat-card--showdown-winner {
+  border-color: #f0c040 !important;
+  animation: winner-pulse 1.4s ease-in-out infinite;
+}
+
+/* Loser seats after showdown */
+.seat-card--showdown-loser {
+  opacity: 0.38;
+  transition: opacity 0.4s ease;
+}
+
+/* ── Show / Muck prompt ───────────────────────────────────────────── */
+
+/* Compact prompt anchored above the winner's seat card */
+.show-muck-prompt {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: #1a1a2e;
+  border: 1.5px solid #f0c040;
+  border-radius: 10px;
+  padding: 10px 14px;
+  text-align: center;
+  white-space: nowrap;
+  z-index: 30;
+  animation: show-muck-enter 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  pointer-events: all;
+}
+
+@keyframes show-muck-enter {
+  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0);    }
+}
+
+.show-muck-prompt__title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-bottom: 8px;
+}
+
+.show-muck-prompt__buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.show-muck-prompt__btn {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: transform 0.1s, box-shadow 0.1s;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.show-muck-prompt__btn:hover {
+  transform: translateY(-1px);
+}
+
+.show-muck-prompt__btn--show {
+  background: #16a34a;
+  color: #fff;
+}
+
+.show-muck-prompt__btn--muck {
+  background: #2a2a4e;
+  color: #94a3b8;
+  border: 1px solid #3a3a5e;
+}
+
+/* Card muck — slides off screen to the left */
+.card--muck {
+  animation: card-muck 0.35s ease-in forwards;
+}
+
+@keyframes card-muck {
+  from { opacity: 1; transform: translateX(0)     rotate(0deg);   }
+  to   { opacity: 0; transform: translateX(-60px) rotate(-15deg); }
+}

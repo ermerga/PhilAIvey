@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { Table } from "../components/Table";
 import type { GameState } from "../types";
 
@@ -70,48 +69,31 @@ describe("Table", () => {
         gameState={makeGameState()}
         thinkingPlayerId={null}
         actionFlash={null}
-        onStartRound={vi.fn()}
       />
     );
     expect(container.querySelector(".table-felt")).toBeTruthy();
   });
 
-  it("shows the Start Round overlay when is_hand_over is true", () => {
+  it("shows the street label during an active hand", () => {
+    render(
+      <Table
+        gameState={makeGameState({ street: "flop", is_hand_over: false })}
+        thinkingPlayerId={null}
+        actionFlash={null}
+      />
+    );
+    expect(screen.getByText("FLOP")).toBeTruthy();
+  });
+
+  it("hides the street label when the hand is over", () => {
     render(
       <Table
         gameState={makeGameState({ is_hand_over: true, winners: [] })}
         thinkingPlayerId={null}
         actionFlash={null}
-        onStartRound={vi.fn()}
       />
     );
-    expect(screen.getByText("Start Round")).toBeTruthy();
-  });
-
-  it("hides the Start Round overlay when a hand is in progress", () => {
-    render(
-      <Table
-        gameState={makeGameState({ is_hand_over: false })}
-        thinkingPlayerId={null}
-        actionFlash={null}
-        onStartRound={vi.fn()}
-      />
-    );
-    expect(screen.queryByText("Start Round")).toBeNull();
-  });
-
-  it("calls onStartRound when the Start Round button is clicked", async () => {
-    const onStartRound = vi.fn();
-    render(
-      <Table
-        gameState={makeGameState({ is_hand_over: true, winners: [] })}
-        thinkingPlayerId={null}
-        actionFlash={null}
-        onStartRound={onStartRound}
-      />
-    );
-    await userEvent.click(screen.getByText("Start Round"));
-    expect(onStartRound).toHaveBeenCalledOnce();
+    expect(screen.queryByText("PREFLOP")).toBeNull();
   });
 
   it("applies gold glow class to human seat when it is the human's turn", () => {
@@ -120,10 +102,8 @@ describe("Table", () => {
         gameState={makeGameState({ current_actor: "human" })}
         thinkingPlayerId={null}
         actionFlash={null}
-        onStartRound={vi.fn()}
       />
     );
-    // The human seat card should have the gold glow modifier
     expect(container.querySelector(".seat-card--gold")).toBeTruthy();
   });
 
@@ -133,23 +113,21 @@ describe("Table", () => {
         gameState={makeGameState({ current_actor: "ai_0" })}
         thinkingPlayerId="ai_0"
         actionFlash={null}
-        onStartRound={vi.fn()}
       />
     );
     expect(container.querySelector(".seat-card--purple")).toBeTruthy();
   });
 
-  it("shows the winner name in the overlay after a hand ends", () => {
-    render(
+  it("does not show winner badge on initial render (requires state transition)", () => {
+    const { container } = render(
       <Table
         gameState={makeGameState({ is_hand_over: true, winners: ["human"] })}
         thinkingPlayerId={null}
         actionFlash={null}
-        onStartRound={vi.fn()}
       />
     );
-    // winnerNames joins player name "You" (is_human = true, name = "You")
-    expect(screen.getByText(/You wins/)).toBeTruthy();
+    // winner-badge only fires after the is_hand_over transition, not on cold render
+    expect(container.querySelector(".winner-badge")).toBeNull();
   });
 
   it("shows position badges (SB, BB, D) on the correct seats", () => {
@@ -158,7 +136,6 @@ describe("Table", () => {
         gameState={makeGameState()}
         thinkingPlayerId={null}
         actionFlash={null}
-        onStartRound={vi.fn()}
       />
     );
     // human is BB, ai_0 is SB, ai_1 is D per makeGameState

@@ -1,13 +1,13 @@
+import { useState, useEffect, useRef } from "react";
 import type { ActionFlash, GameState, Player } from "../types";
 
 interface TableProps {
   gameState: GameState;
   thinkingPlayerId: string | null;
   actionFlash: ActionFlash | null;
-  onStartRound: () => void;
 }
 
-export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }: TableProps) {
+export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) {
   const {
     players,
     community_cards,
@@ -17,7 +17,6 @@ export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }
     is_hand_over,
     winners,
     hand_number,
-    small_blind,
     small_blind_id,
     big_blind_id,
     dealer_id,
@@ -25,18 +24,62 @@ export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }
 
   const human = players.find((p) => p.is_human) ?? null;
 
-  // Sort AI players in clockwise betting order starting from the player
-  // immediately after the human in the sitdown array. This makes seat p1
-  // (top-left) always the first AI clockwise from you, matching the visual
-  // left→right reading direction across the top of the table.
+  // ---------------------------------------------------------------------------
+  // Community card deal animation
+  // Track how many cards were visible last render. When more cards appear,
+  // mark which indices are "new" so we can stagger the deal animation.
+  // ---------------------------------------------------------------------------
+  const prevCardCountRef = useRef(community_cards.length);
+  const [animRange, setAnimRange] = useState<{ start: number; end: number } | null>(null);
+
+  useEffect(() => {
+    const prev = prevCardCountRef.current;
+    const curr = community_cards.length;
+    if (curr > prev) {
+      setAnimRange({ start: prev, end: curr - 1 });
+      // Clear the animation classes after they finish (0.72s × 5 cards + buffer)
+      const timeout = setTimeout(() => setAnimRange(null), 1500);
+      prevCardCountRef.current = curr;
+      return () => clearTimeout(timeout);
+    }
+    // Cards were cleared (new hand starting) — just reset the ref
+    prevCardCountRef.current = curr;
+  }, [community_cards.length]);
+
+  // ---------------------------------------------------------------------------
+  // Winner animation + show/muck prompt
+  // ---------------------------------------------------------------------------
+  const [winnerAnimActive, setWinnerAnimActive] = useState(false);
+  const [showMuckPrompt, setShowMuckPrompt] = useState(false);
+  const [muckChosen, setMuckChosen] = useState(false);
+
+  useEffect(() => {
+    if (!is_hand_over) {
+      // New hand started — reset everything
+      setWinnerAnimActive(false);
+      setShowMuckPrompt(false);
+      setMuckChosen(false);
+      return;
+    }
+    if (hand_number === 0) return; // fresh game, nothing to animate yet
+    // Hand just ended — play winner animation
+    setWinnerAnimActive(true);
+    // Show the show/muck prompt when the human is the sole winner (won by fold)
+    if (winners.length === 1 && winners[0] === human?.id) {
+      setShowMuckPrompt(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [is_hand_over]);
+
+  // ---------------------------------------------------------------------------
+  // Seat layout helpers
+  // ---------------------------------------------------------------------------
   const humanIdx = players.findIndex((p) => p.is_human);
   const aiPlayers = [
     ...players.slice(humanIdx + 1),
     ...players.slice(0, humanIdx),
   ].filter((p) => !p.is_human);
 
-  // Maps AI count → clockwise visual positions going left-side → top →
-  // right-side so the betting flow reads naturally on screen.
   const CLOCKWISE_SEATS: Record<number, string[]> = {
     1: ["p3"],
     2: ["p1", "p2"],
@@ -49,15 +92,6 @@ export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }
     return `seat-pos--${seats[idx] ?? `p${idx + 1}`}`;
   }
 
-  function playerName(id: string | null): string {
-    if (!id) return "—";
-    return players.find((p) => p.id === id)?.name ?? id;
-  }
-
-  const winnerNames = winners
-    .map((id) => playerName(id))
-    .join(", ");
-
   return (
     <div>
       {/* Hand info bar */}
@@ -67,62 +101,30 @@ export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }
         </span>
       </div>
 
-      {/* Start Round overlay — full-screen modal between hands */}
-      {is_hand_over && (
-        <div className="start-overlay">
-          <div className="start-overlay__heading">
-            <p className="start-overlay__title">
-              {hand_number === 0 ? "Ready to play?" : `Hand ${hand_number} complete`}
-            </p>
-            {winners.length > 0 && (
-              <p className="start-overlay__sub">{winnerNames} wins the hand</p>
-            )}
-            {hand_number === 0 && (
-              <p className="start-overlay__sub">Blinds posted — ready to deal</p>
-            )}
-          </div>
-
-          {(small_blind_id || big_blind_id || dealer_id) && (
-            <div className="start-overlay__info">
-              <div className="start-overlay__card">
-                <div className="start-overlay__card-label">Small Blind</div>
-                <div className="start-overlay__card-player">{playerName(small_blind_id)}</div>
-                <div className="start-overlay__card-amount">{small_blind} chips</div>
-              </div>
-              <div className="start-overlay__card">
-                <div className="start-overlay__card-label">Big Blind</div>
-                <div className="start-overlay__card-player">{playerName(big_blind_id)}</div>
-                <div className="start-overlay__card-amount">{small_blind * 2} chips</div>
-              </div>
-              <div className="start-overlay__card">
-                <div className="start-overlay__card-label">Dealer</div>
-                <div className="start-overlay__card-player">{playerName(dealer_id)}</div>
-                <div className="start-overlay__card-amount">Button</div>
-              </div>
-            </div>
-          )}
-
-          <button className="start-overlay__btn" onClick={onStartRound}>
-            Start Round
-          </button>
-        </div>
-      )}
-
-      {/* Oval table — always rendered (seats show mid-hand state) */}
+      {/* Oval table — always rendered */}
       <div className="table-viewport">
         <div className="table-wrap">
-          {/* Green felt surface */}
           <div className="table-felt" />
 
-          {/* Community cards + pot — centered on the felt */}
+          {/* Community cards + pot */}
           <div className="table-center">
             <div style={styles.streetLabel}>
               {is_hand_over ? "" : street.toUpperCase()}
             </div>
             <div style={styles.communityCards}>
-              {community_cards.map((card, i) => (
-                <CardDisplay key={i} card={card} />
-              ))}
+              {community_cards.map((card, i) => {
+                const isNew = animRange !== null && i >= animRange.start && i <= animRange.end;
+                const delay = isNew ? (i - animRange!.start) * 0.12 : 0;
+                return (
+                  <div
+                    key={i}
+                    className={`community-card-wrapper${isNew ? " community-card-wrapper--dealing" : ""}`}
+                    style={isNew ? { animationDelay: `${delay}s` } : undefined}
+                  >
+                    <CardDisplay card={card} />
+                  </div>
+                );
+              })}
             </div>
             {!is_hand_over && pot > 0 && (
               <div style={styles.potChip}>
@@ -132,7 +134,7 @@ export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }
             )}
           </div>
 
-          {/* Human seat — bottom center */}
+          {/* Human seat */}
           {human && (
             <div className="seat-pos seat-pos--human">
               <PlayerSeat
@@ -144,16 +146,18 @@ export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }
                 isSB={human.id === small_blind_id}
                 isBB={human.id === big_blind_id}
                 actionFlash={actionFlash?.playerId === human.id ? actionFlash : null}
+                winnerAnimActive={winnerAnimActive}
+                showMuckPrompt={showMuckPrompt && !muckChosen}
+                muckChosen={muckChosen}
+                onShow={() => setShowMuckPrompt(false)}
+                onMuck={() => { setMuckChosen(true); setShowMuckPrompt(false); }}
               />
             </div>
           )}
 
-          {/* AI seats — arranged clockwise from the human's position */}
+          {/* AI seats */}
           {aiPlayers.map((player, idx) => (
-            <div
-              key={player.id}
-              className={`seat-pos ${seatClass(idx)}`}
-            >
+            <div key={player.id} className={`seat-pos ${seatClass(idx)}`}>
               <PlayerSeat
                 player={player}
                 isCurrentActor={player.id === current_actor}
@@ -163,6 +167,11 @@ export function Table({ gameState, thinkingPlayerId, actionFlash, onStartRound }
                 isSB={player.id === small_blind_id}
                 isBB={player.id === big_blind_id}
                 actionFlash={actionFlash?.playerId === player.id ? actionFlash : null}
+                winnerAnimActive={winnerAnimActive}
+                showMuckPrompt={false}
+                muckChosen={false}
+                onShow={() => {}}
+                onMuck={() => {}}
               />
             </div>
           ))}
@@ -185,6 +194,11 @@ interface PlayerSeatProps {
   isSB: boolean;
   isBB: boolean;
   actionFlash: ActionFlash | null;
+  winnerAnimActive: boolean;
+  showMuckPrompt: boolean;
+  muckChosen: boolean;
+  onShow: () => void;
+  onMuck: () => void;
 }
 
 function PlayerSeat({
@@ -196,16 +210,25 @@ function PlayerSeat({
   isSB,
   isBB,
   actionFlash,
+  winnerAnimActive,
+  showMuckPrompt,
+  muckChosen,
+  onShow,
+  onMuck,
 }: PlayerSeatProps) {
-  const flashClass = actionFlash
-    ? `seat-card--flash-${actionFlash.action}`
-    : "";
+  const flashClass = actionFlash ? `seat-card--flash-${actionFlash.action}` : "";
+
+  // Winner announced = gold pulse; loser dim = fade to 38%
+  const winnerAnnouncedClass = winnerAnimActive && isWinner ? "seat-card--winner-announced" : "";
+  const loserDimClass = winnerAnimActive && !isWinner && !player.is_folded ? "seat-card--loser-dim" : "";
 
   const cardClasses = [
     "seat-card",
     flashClass || (isThinking ? "seat-card--purple" : isCurrentActor ? "seat-card--gold" : ""),
     player.is_folded ? "seat-card--folded" : "",
-    isWinner ? "seat-card--winner" : "",
+    isWinner && !winnerAnimActive ? "seat-card--winner" : "",
+    winnerAnnouncedClass,
+    loserDimClass,
   ]
     .filter(Boolean)
     .join(" ");
@@ -217,11 +240,19 @@ function PlayerSeat({
   };
 
   return (
-    <div className={cardClasses}>
-      {/* Dealer button — white circle at top-right of card */}
+    <div className={cardClasses} style={{ position: "relative" }}>
       {isDealer && <div className="dealer-btn">D</div>}
 
-      {/* Action flash overlay label */}
+      {/* Winner badge — bounces in above the card */}
+      {winnerAnimActive && isWinner && (
+        <div className="winner-badge">Winner!</div>
+      )}
+
+      {/* Show/muck prompt — only for human when they won by fold */}
+      {showMuckPrompt && (
+        <ShowMuckPrompt onShow={onShow} onMuck={onMuck} />
+      )}
+
       {actionFlash && (
         <div className={`action-label action-label--${actionFlash.action}`}>
           {ACTION_LABELS[actionFlash.action]}
@@ -231,12 +262,9 @@ function PlayerSeat({
         </div>
       )}
 
-      <div style={styles.seatName}>
-        {player.name}
-      </div>
+      <div style={styles.seatName}>{player.name}</div>
       <div style={styles.seatStack}>{player.stack} chips</div>
 
-      {/* Position + status badges */}
       <div className="seat-badges">
         {isSB && <span className="badge badge--sb">SB</span>}
         {isBB && <span className="badge badge--bb">BB</span>}
@@ -251,7 +279,13 @@ function PlayerSeat({
       {/* Hole cards */}
       <div style={styles.holeCards}>
         {player.hole_cards.length > 0 ? (
-          player.hole_cards.map((card, i) => <CardDisplay key={i} card={card} />)
+          player.hole_cards.map((card, i) => (
+            <CardDisplay
+              key={i}
+              card={card}
+              className={muckChosen ? "card--muck" : undefined}
+            />
+          ))
         ) : (
           !player.is_human && !player.is_folded && (
             <>
@@ -266,10 +300,30 @@ function PlayerSeat({
 }
 
 // ---------------------------------------------------------------------------
+// ShowMuckPrompt — compact prompt above the human's seat when they win by fold
+// ---------------------------------------------------------------------------
+
+function ShowMuckPrompt({ onShow, onMuck }: { onShow: () => void; onMuck: () => void }) {
+  return (
+    <div className="show-muck-prompt">
+      <div className="show-muck-prompt__title">Show cards?</div>
+      <div className="show-muck-prompt__buttons">
+        <button className="show-muck-prompt__btn show-muck-prompt__btn--show" onClick={onShow}>
+          Show
+        </button>
+        <button className="show-muck-prompt__btn show-muck-prompt__btn--muck" onClick={onMuck}>
+          Muck
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // CardDisplay — a single face-up card
 // ---------------------------------------------------------------------------
 
-function CardDisplay({ card }: { card: string }) {
+function CardDisplay({ card, className }: { card: string; className?: string }) {
   const rank = card.slice(0, -1);
   const suit = card.slice(-1);
 
@@ -282,7 +336,10 @@ function CardDisplay({ card }: { card: string }) {
   const isRed = suit === "h" || suit === "d";
 
   return (
-    <div style={{ ...styles.card, color: isRed ? "#dc2626" : "#111" }}>
+    <div
+      className={className}
+      style={{ ...styles.card, color: isRed ? "#dc2626" : "#111" }}
+    >
       <div style={styles.cardRank}>{rank}</div>
       <div style={styles.cardSuit}>{suitSymbol[suit] ?? suit}</div>
     </div>
@@ -290,7 +347,7 @@ function CardDisplay({ card }: { card: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// CardBack — face-down card placeholder for AI hands
+// CardBack — face-down placeholder for AI hands
 // ---------------------------------------------------------------------------
 
 function CardBack() {
@@ -322,13 +379,6 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "0 auto",
   },
   handNum: {
-    color: "#94a3b8",
-  },
-  streetBadge: {
-    color: "#f0c040",
-    letterSpacing: "2px",
-  },
-  pot: {
     color: "#94a3b8",
   },
   streetLabel: {

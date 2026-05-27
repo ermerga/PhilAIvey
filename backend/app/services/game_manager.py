@@ -251,6 +251,8 @@ class GameManager:
         if state.current_actor != "human":
             raise ValueError("It is not the human's turn.")
 
+        prev_street = state.street
+
         engine_state, messages = RoundManager.apply_action(
             state.engine_state, action, amount
         )
@@ -263,9 +265,15 @@ class GameManager:
                 {"street": state.street, "action": action, "amount": amount}
             )
 
+        # If a new street was just dealt (flop/turn/river), pause before AI acts
+        # so the player has time to register the new community cards.
+        street_changed = not state.is_hand_over and state.street != prev_street
+
         # Run AI turns until back to the human or the hand ends
         if not state.is_hand_over and not self._is_human_turn(state):
-            state = await self._run_ai_actions(state, broadcast)
+            state = await self._run_ai_actions(
+                state, broadcast, street_delay=2.5 if street_changed else 0.0
+            )
 
         self._active_games[session_id] = state
         return state
@@ -335,15 +343,17 @@ class GameManager:
     # ------------------------------------------------------------------
 
     async def _run_ai_actions(
-        self, state: GameState, broadcast: Optional[Callable] = None
+        self, state: GameState, broadcast: Optional[Callable] = None,
+        street_delay: float = 0.0,
     ) -> GameState:
         """
         Loop through AI turns automatically until it is the human's turn
-        or the hand ends. Uses stub random actions in Phase 1.
+        or the hand ends.
 
         Before each action: broadcasts ai_thinking so the UI shows who's thinking.
-        Waits 3 seconds to simulate the AI deliberating.
         After each action: broadcasts the updated game_state.
+        street_delay: extra pause after broadcasting the new street so the player
+        can register flop/turn/river cards before the first AI acts.
         """
         # Push the current state immediately so the frontend shows the correct
         # street and community cards before any ai_thinking event fires.
@@ -353,6 +363,10 @@ class GameManager:
                 "type": "game_state",
                 "data": self.serialize_for_client(state),
             })
+
+        # Pause so the player has time to see new community cards
+        if street_delay > 0:
+            await asyncio.sleep(street_delay)
 
         while not state.is_hand_over and not self._is_human_turn(state):
             acting_player = self._get_player(state, state.current_actor)
@@ -366,11 +380,17 @@ class GameManager:
                 })
 
             # Pause so the UI has time to show the thinking state
-            await asyncio.sleep(3)
+            await asyncio.sleep(1.5)
 
             # Capture the actor before _extract_state overwrites current_actor
             actor_id = state.current_actor
-            action, amount = self._stub_ai_action(state.valid_actions)
+            if acting_player:
+                from app.services.ai_opponent import ai_opponent
+                action, amount = await ai_opponent.decide(acting_player, state)
+                amt_str = f" {amount}" if action == "raise" else ""
+                print(f"[AI] {acting_player.name} ({acting_player.play_style}) → {action}{amt_str}")
+            else:
+                action, amount = self._stub_ai_action(state.valid_actions)
 
             engine_state, messages = RoundManager.apply_action(
                 state.engine_state, action, amount
@@ -489,6 +509,11 @@ class GameManager:
 
         # Current actor from next_player seat index
         next_idx = engine_state.get("next_player")
+        if isinstance(next_idx, str):
+            try:
+                next_idx = int(next_idx)
+            except ValueError:
+                next_idx = None
         seat_players = table.seats.players
         if next_idx is not None and 0 <= next_idx < len(seat_players):
             state.current_actor = seat_players[next_idx].uuid

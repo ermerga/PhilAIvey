@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { ActionFlash, GameState } from "./types";
 import { newGame, submitAction, startHand } from "./api";
 import { useGameSocket } from "./hooks/useGameSocket";
@@ -83,22 +83,29 @@ export default function App() {
     }
   }
 
-  async function handleNextHand() {
-    if (!sessionId || !gameState) return;
-    setError(null);
-    setPhilText("");
-    setIsPhilStreaming(false);
-    const prevState = gameState;
-    // Dismiss the overlay immediately so users see AI thinking rather than waiting
-    setGameState({ ...gameState, is_hand_over: false });
-    try {
-      const updated = await startHand(sessionId, skillLevel);
-      setGameState(updated);
-    } catch (err) {
-      setGameState(prevState);
-      setError(err instanceof Error ? err.message : "Failed to start next hand.");
-    }
-  }
+  // Auto-start the next hand when one ends.
+  // hand_number=0: game just created, deal immediately after a short settle delay.
+  // hand_number>0: let the winner animation play (3.5s) before starting new hand.
+  useEffect(() => {
+    if (!gameState?.is_hand_over || !sessionId) return;
+    const delay = gameState.hand_number === 0 ? 1000 : 3500;
+    const capturedSessionId = sessionId;
+    const capturedSkillLevel = skillLevel;
+    const timer = setTimeout(async () => {
+      setError(null);
+      setPhilText("");
+      setIsPhilStreaming(false);
+      setGameState((prev) => (prev ? { ...prev, is_hand_over: false } : prev));
+      try {
+        const updated = await startHand(capturedSessionId, capturedSkillLevel);
+        setGameState(updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to start next hand.");
+      }
+    }, delay);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState?.is_hand_over, gameState?.hand_number, sessionId]);
 
   // ---------------------------------------------------------------------------
   // Lobby screen — shown before a game starts
@@ -188,7 +195,6 @@ export default function App() {
             gameState={gameState}
             thinkingPlayerId={thinkingPlayerId}
             actionFlash={actionFlash}
-            onStartRound={handleNextHand}
           />
         </div>
 
