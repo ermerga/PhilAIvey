@@ -262,6 +262,7 @@ class GameManager:
             raise ValueError("It is not the human's turn.")
 
         prev_street = state.street
+        prev_card_count = len(state.community_cards)
 
         engine_state, messages = RoundManager.apply_action(
             state.engine_state, action, amount
@@ -274,6 +275,10 @@ class GameManager:
             human.action_history.append(
                 {"street": state.street, "action": action, "amount": amount}
             )
+
+        # If the human's action triggered an all-in runout, broadcast each
+        # intermediate street so the player watches the board run out.
+        await self._broadcast_runout_if_needed(state, prev_card_count, broadcast)
 
         # If a new street was just dealt (flop/turn/river), pause before AI acts
         # so the player has time to register the new community cards.
@@ -291,22 +296,25 @@ class GameManager:
     def get_state(self, session_id: str) -> Optional[GameState]:
         return self._active_games.get(session_id)
 
-    def serialize_for_client(self, state: GameState) -> dict:
+    def serialize_for_client(self, state: GameState, reveal_ai_cards: bool = False) -> dict:
         """
         Build a JSON-safe dict to send to the React frontend.
-        - AI hole cards are hidden (empty list) until showdown
+        - AI hole cards are hidden until showdown
+        - reveal_ai_cards=True forces AI cards visible (used during all-in runout)
         - engine_state is excluded entirely
         """
+        show_all = state.is_hand_over or reveal_ai_cards
         players_out = []
         for p in state.players:
+            # Reveal AI cards at showdown or during runout (non-folded players only)
+            show_cards = p.is_human or (show_all and not p.is_folded)
             players_out.append({
                 "id": p.id,
                 "name": p.name,
                 "stack": p.stack,
                 "is_human": p.is_human,
                 "play_style": p.play_style,
-                # Only reveal hole cards for the human player
-                "hole_cards": p.hole_cards if p.is_human else [],
+                "hole_cards": p.hole_cards if show_cards else [],
                 "is_folded": p.is_folded,
                 "is_allin": p.is_allin,
             })
@@ -402,6 +410,7 @@ class GameManager:
             else:
                 action, amount = self._stub_ai_action(state.valid_actions)
 
+            prev_card_count = len(state.community_cards)
             engine_state, messages = RoundManager.apply_action(
                 state.engine_state, action, amount
             )
@@ -414,7 +423,7 @@ class GameManager:
                     {"street": state.street, "action": action, "amount": amount}
                 )
 
-            # Broadcast the action so the UI can animate it, then the new state
+            # Broadcast the action so the UI can animate it
             if broadcast:
                 await broadcast(state.session_id, {
                     "type": "player_acted",
@@ -422,12 +431,81 @@ class GameManager:
                     "action": action,
                     "amount": amount,
                 })
+
+            # If this AI action triggered an all-in runout, broadcast each
+            # intermediate street before the final hand-over state.
+            await self._broadcast_runout_if_needed(state, prev_card_count, broadcast)
+
+            # Broadcast the updated game state
+            if broadcast:
                 await broadcast(state.session_id, {
                     "type": "game_state",
                     "data": self.serialize_for_client(state),
                 })
 
         return state
+
+    async def _broadcast_runout_if_needed(
+        self,
+        state: GameState,
+        prev_card_count: int,
+        broadcast: Optional[Callable],
+    ) -> None:
+        """
+        When all players are all-in, PyPokerEngine runs the full board in a
+        single apply_action call, skipping intermediate streets. This method
+        detects that jump (is_hand_over=True with new community cards) and
+        re-broadcasts each street one at a time with a pause so the player
+        can watch the run-out unfold.
+
+        AI hole cards are revealed face-up during the runout (standard poker
+        etiquette for all-in situations).
+        """
+        if not broadcast:
+            return
+
+        final_cards = state.community_cards[:]
+        # Only fire for all-in runouts: hand ended AND new cards appeared
+        if not (state.is_hand_over and len(final_cards) > prev_card_count):
+            return
+
+        # Snapshot the final state so we can restore it after the broadcasts
+        final_is_hand_over = state.is_hand_over
+        final_winners = state.winners[:]
+        final_current_actor = state.current_actor
+        final_valid_actions = state.valid_actions[:]
+        final_street = state.street
+
+        # Broadcast each new street in order: flop (3), turn (4), river (5)
+        STREET_THRESHOLDS = [(3, "flop"), (4, "turn"), (5, "river")]
+        new_streets = [
+            (count, name)
+            for count, name in STREET_THRESHOLDS
+            if count > prev_card_count and count <= len(final_cards)
+        ]
+
+        for count, street_name in new_streets:
+            state.community_cards = final_cards[:count]
+            state.is_hand_over = False
+            state.winners = []
+            state.current_actor = None
+            state.valid_actions = []
+            state.street = street_name
+
+            await broadcast(state.session_id, {
+                "type": "game_state",
+                # reveal_ai_cards=True: all-in players show cards face-up
+                "data": self.serialize_for_client(state, reveal_ai_cards=True),
+            })
+            await asyncio.sleep(2.0)
+
+        # Restore the real final state
+        state.community_cards = final_cards
+        state.is_hand_over = final_is_hand_over
+        state.winners = final_winners
+        state.current_actor = final_current_actor
+        state.valid_actions = final_valid_actions
+        state.street = final_street
 
     def _stub_ai_action(self, valid_actions: list[dict]) -> tuple[str, int]:
         """
@@ -553,6 +631,13 @@ class GameManager:
                 state.current_actor = None
                 winners = msg_data.get("winners", [])
                 state.winners = [w.get("uuid", "") for w in winners]
+                # PyPokerEngine clears table.get_community_card() after the round
+                # ends, but the final board is preserved in round_state.community_card.
+                # We must read from here for all-in runout detection to work.
+                round_state = msg_data.get("round_state", {})
+                final_board = round_state.get("community_card", [])
+                if final_board:
+                    state.community_cards = [_from_pypoker_card(str(c)) for c in final_board]
 
         state.engine_state = engine_state
 
