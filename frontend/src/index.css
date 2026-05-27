@@ -130,13 +130,13 @@ code {
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 150px 0 170px;  /* top: AI seats; bottom: human seat hangs below oval */
+  padding: 115px 0 140px;  /* top: AI seats; bottom: human seat hangs below oval */
 }
 
 .table-wrap {
   position: relative;
-  width: 620px;
-  height: 340px;
+  width: 560px;
+  height: 300px;
 }
 
 /* The green felt — fills table-wrap absolutely */
@@ -187,7 +187,7 @@ code {
 
 /* Exact positions from the approved mockup */
 .seat-pos--human {
-  bottom: -155px;
+  bottom: -120px;
   left: 50%;
   transform: translateX(-50%);
 }

@@ -234,9 +234,10 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#e2e8f0",
     padding: "16px",
   },
-  /* Game page — fills viewport exactly, no scroll */
+  /* Game page — fixed to full viewport, escapes #root width constraints */
   gamePage: {
-    height: "100vh",
+    position: "fixed",
+    inset: "0",
     overflow: "hidden",
     backgroundColor: "#0d0d1a",
     display: "flex",
@@ -309,8 +310,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     width: "100%",
-    maxWidth: "900px",
-    height: "100vh",
+    height: "100%",
     overflow: "hidden",
   },
   tableSection: {
