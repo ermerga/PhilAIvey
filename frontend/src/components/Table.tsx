@@ -52,8 +52,12 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
   const [winnerAnimActive, setWinnerAnimActive] = useState(false);
   const [showMuckPrompt, setShowMuckPrompt] = useState(false);
   const [muckChosen, setMuckChosen] = useState(false);
+  const prevIsHandOverRef = useRef(is_hand_over);
 
   useEffect(() => {
+    const prevIsHandOver = prevIsHandOverRef.current;
+    prevIsHandOverRef.current = is_hand_over;
+
     if (!is_hand_over) {
       // New hand started — reset everything
       setWinnerAnimActive(false);
@@ -61,6 +65,8 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
       setMuckChosen(false);
       return;
     }
+    // Only animate on transition false → true, not on cold mount with is_hand_over=true
+    if (prevIsHandOver) return;
     if (hand_number === 0) return; // fresh game, nothing to animate yet
     // Hand just ended — play winner animation
     setWinnerAnimActive(true);
