@@ -189,6 +189,16 @@ class GameManager:
         state.is_hand_over = False
         state.winners = []
 
+        # Remove bust players (stack = 0) — they can't post blinds
+        state.players = [p for p in state.players if p.stack > 0]
+
+        # If fewer than 2 players remain, the game is effectively over
+        if len(state.players) < 2:
+            state.is_hand_over = True
+            state.winners = [p.id for p in state.players]
+            self._active_games[session_id] = state
+            return state
+
         # Reset per-hand player fields
         for p in state.players:
             p.hole_cards = []
