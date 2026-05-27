@@ -123,9 +123,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    padding: "18px 28px 20px",
-    backgroundColor: "#1a1a2e",
-    borderTop: "2px solid #2a2a4e",
+    padding: "14px 16px 16px",
+    height: "100%",
+    justifyContent: "center",
   },
   waiting: {
     color: "#888",

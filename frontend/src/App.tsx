@@ -73,6 +73,8 @@ export default function App() {
   ) {
     if (!sessionId) return;
     setError(null);
+    setPhilText("");        // reset Phil's conversation for the new turn
+    setIsPhilStreaming(false);
     try {
       const updated = await submitAction(sessionId, action, amount, skillLevel);
       setGameState(updated);
@@ -160,7 +162,7 @@ export default function App() {
   const isMyTurn = gameState.current_actor === "human";
 
   return (
-    <div style={styles.page}>
+    <div style={styles.gamePage}>
       <div style={styles.game}>
         {/* Header */}
         <div style={styles.header}>
@@ -180,31 +182,37 @@ export default function App() {
         {/* Error banner */}
         {error && <div style={styles.error}>{error}</div>}
 
-        {/* Poker table — includes the Start Round overlay between hands */}
-        <Table
-          gameState={gameState}
-          thinkingPlayerId={thinkingPlayerId}
-          actionFlash={actionFlash}
-          onStartRound={handleNextHand}
-        />
-
-        {/* Action controls — shown while hand is in progress */}
-        {!gameState.is_hand_over && (
-          <ActionBar
-            validActions={gameState.valid_actions}
-            isMyTurn={isMyTurn}
-            onAction={handleAction}
+        {/* Poker table — flex:1 so it fills remaining space above the HUD */}
+        <div style={styles.tableSection}>
+          <Table
+            gameState={gameState}
+            thinkingPlayerId={thinkingPlayerId}
+            actionFlash={actionFlash}
+            onStartRound={handleNextHand}
           />
-        )}
+        </div>
 
-        {/* Phil Ivey coaching panel */}
-        <PhilPanel
-          sessionId={sessionId}
-          skillLevel={skillLevel}
-          philText={philText}
-          isStreaming={isPhilStreaming}
-          isMyTurn={isMyTurn}
-        />
+        {/* HUD zone — Phil (left) + ActionBar (right), visible during active play */}
+        {!gameState.is_hand_over && (
+          <div style={styles.hudZone}>
+            <div style={styles.hudPhil}>
+              <PhilPanel
+                sessionId={sessionId}
+                skillLevel={skillLevel}
+                philText={philText}
+                isStreaming={isPhilStreaming}
+                isMyTurn={isMyTurn}
+              />
+            </div>
+            <div style={styles.hudActions}>
+              <ActionBar
+                validActions={gameState.valid_actions}
+                isMyTurn={isMyTurn}
+                onAction={handleAction}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -215,6 +223,7 @@ export default function App() {
 // ---------------------------------------------------------------------------
 
 const styles: Record<string, React.CSSProperties> = {
+  /* Lobby page — centered, scrollable */
   page: {
     minHeight: "100vh",
     backgroundColor: "#0d0d1a",
@@ -224,6 +233,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "'DM Sans', system-ui, sans-serif",
     color: "#e2e8f0",
     padding: "16px",
+  },
+  /* Game page — fills viewport exactly, no scroll */
+  gamePage: {
+    height: "100vh",
+    overflow: "hidden",
+    backgroundColor: "#0d0d1a",
+    display: "flex",
+    justifyContent: "center",
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+    color: "#e2e8f0",
   },
   lobby: {
     display: "flex",
@@ -289,9 +308,37 @@ const styles: Record<string, React.CSSProperties> = {
   game: {
     display: "flex",
     flexDirection: "column",
-    gap: "16px",
     width: "100%",
     maxWidth: "900px",
+    height: "100vh",
+    overflow: "hidden",
+  },
+  tableSection: {
+    flex: 1,
+    minHeight: 0,
+    position: "relative",
+    zIndex: 5,           // sits above the HUD zone so human seat card overlaps cleanly
+    overflow: "visible", // seats extend beyond the section bounds
+  },
+  hudZone: {
+    height: "220px",
+    flexShrink: 0,
+    display: "flex",
+    borderTop: "2px solid #2a2a4e",
+    background: "#0e0e1d",
+    position: "relative",
+    zIndex: 1,
+  },
+  hudPhil: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    borderRight: "1px solid #2a2a4e",
+  },
+  hudActions: {
+    width: "340px",
+    flexShrink: 0,
+    overflow: "hidden",
   },
   header: {
     display: "flex",

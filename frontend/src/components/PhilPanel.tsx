@@ -55,7 +55,7 @@ export function PhilPanel({
   const inputDisabled = !isMyTurn || sending || isStreaming;
 
   return (
-    <div className={isMyTurn ? "phil-popup" : "phil-popup phil-popup--hidden"}>
+    <div style={styles.panel}>
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.avatar}>PI</div>
@@ -117,14 +117,24 @@ export function PhilPanel({
 // ---------------------------------------------------------------------------
 
 const styles: Record<string, React.CSSProperties> = {
+  panel: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    overflow: "hidden",
+  },
   header: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
+    padding: "10px 14px 8px",
+    borderBottom: "1px solid #2a2a4e",
+    flexShrink: 0,
+    background: "#1a1a2e",
   },
   avatar: {
-    width: "40px",
-    height: "40px",
+    width: "34px",
+    height: "34px",
     borderRadius: "50%",
     backgroundColor: "#78350f",
     color: "#fde68a",
@@ -132,39 +142,38 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     fontWeight: "bold",
-    fontSize: "14px",
+    fontSize: "12px",
     flexShrink: 0,
+    border: "2px solid rgba(240,192,64,0.3)",
   },
   name: {
     color: "#f0c040",
     fontWeight: "bold",
-    fontSize: "15px",
+    fontSize: "13px",
   },
   subtitle: {
     color: "#64748b",
-    fontSize: "11px",
+    fontSize: "10px",
   },
   streamingBadge: {
     marginLeft: "auto",
     backgroundColor: "#14532d",
     color: "#86efac",
-    fontSize: "11px",
+    fontSize: "10px",
     padding: "2px 8px",
     borderRadius: "10px",
     fontStyle: "italic",
   },
   messageArea: {
-    minHeight: "100px",
-    maxHeight: "220px",
+    flex: 1,
+    minHeight: 0,
     overflowY: "auto",
-    backgroundColor: "#0d0d1a",
-    borderRadius: "8px",
-    padding: "12px",
+    padding: "10px 14px",
   },
   messageText: {
     margin: 0,
     color: "#e2e8f0",
-    fontSize: "14px",
+    fontSize: "13px",
     lineHeight: "1.6",
   },
   cursor: {
@@ -175,21 +184,24 @@ const styles: Record<string, React.CSSProperties> = {
   placeholder: {
     margin: 0,
     color: "#475569",
-    fontSize: "13px",
+    fontSize: "12px",
     fontStyle: "italic",
   },
   inputRow: {
     display: "flex",
     gap: "8px",
+    padding: "8px 14px",
+    borderTop: "1px solid #2a2a4e",
+    flexShrink: 0,
   },
   input: {
     flex: 1,
-    padding: "8px 12px",
+    padding: "7px 10px",
     borderRadius: "6px",
     border: "1px solid #2a2a4e",
     backgroundColor: "#0d0d1a",
     color: "#e2e8f0",
-    fontSize: "13px",
+    fontSize: "12px",
     outline: "none",
   },
   inputDisabled: {
@@ -197,13 +209,13 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "not-allowed",
   },
   sendButton: {
-    padding: "8px 16px",
+    padding: "7px 14px",
     backgroundColor: "#f0c040",
     color: "#111",
     border: "none",
     borderRadius: "6px",
     fontWeight: "bold",
-    fontSize: "13px",
+    fontSize: "12px",
     cursor: "pointer",
   },
   sendButtonDisabled: {
