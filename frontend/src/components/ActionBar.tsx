@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ValidAction } from "../types";
 
 interface ActionBarProps {
@@ -20,12 +20,23 @@ export function ActionBar({ validActions, isMyTurn, onAction }: ActionBarProps) 
       ? raiseAction.amount.max
       : 0;
 
-  const [raiseAmount, setRaiseAmount] = useState(raiseMin);
+  const [raiseAmount, setRaiseAmount] = useState(raiseMin > 0 ? raiseMin : 0);
+
+  // Reset slider to minimum whenever the valid action set changes (new hand / new street)
+  useEffect(() => {
+    if (raiseMin > 0) {
+      setRaiseAmount(raiseMin);
+    }
+  }, [raiseMin, raiseMax]);
+
   const clampedRaise = Math.min(Math.max(raiseAmount, raiseMin), raiseMax);
 
   const callAmount =
     typeof callAction?.amount === "number" ? callAction.amount : 0;
   const isCheck = callAmount === 0;
+  // PyPokerEngine sets raise.min < 0 when the call would use the player's entire
+  // stack — calling is an all-in. Flag this so the button can say so.
+  const isCallAllin = !isCheck && raiseMin < 0;
 
   if (!isMyTurn) {
     return (
@@ -48,16 +59,16 @@ export function ActionBar({ validActions, isMyTurn, onAction }: ActionBarProps) 
 
         {callAction && (
           <button
-            style={{ ...styles.btn, ...styles.call }}
+            style={{ ...styles.btn, ...styles.call, ...(isCallAllin ? styles.callAllin : {}) }}
             onClick={() => onAction("call", callAmount)}
           >
-            {isCheck ? "Check" : `Call ${callAmount}`}
+            {isCheck ? "Check" : isCallAllin ? `All-In  ${callAmount}` : `Call  ${callAmount}`}
           </button>
         )}
       </div>
 
-      {/* Row 2: Raise controls — only shown when a raise is valid */}
-      {raiseAction && raiseMax > 0 && (
+      {/* Row 2: Raise controls — hidden when raise is unavailable (raiseMax ≤ 0 or min < 0) */}
+      {raiseAction && raiseMax > 0 && raiseMin > 0 && (
         <div style={styles.raiseRow}>
           {/* Preset shortcut buttons */}
           <div style={styles.presets}>
@@ -156,6 +167,11 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: "#1e3a5f",
     color: "#fff",
     flex: 1,
+  },
+  callAllin: {
+    backgroundColor: "#7c3a00",
+    color: "#fed7aa",
+    letterSpacing: "0.6px",
   },
   raise: {
     backgroundColor: "#14532d",
