@@ -311,33 +311,32 @@ class PhilTutor:
 
     def _get_position(self, state: GameState, human: PlayerState) -> str:
         """
-        Return a position label based on where the human sits
-        relative to the SB (index 0) and BB (index 1).
+        Return a position label based on the human's role relative to the dealer.
+        Compares by ID so rotation is handled correctly.
         """
-        active = [p for p in state.players if not p.is_folded]
-        total = len(state.players)
+        if human.id == state.small_blind_id:
+            return "Small Blind (SB)"
+        if human.id == state.big_blind_id:
+            return "Big Blind (BB)"
+        if human.id == state.dealer_id:
+            return "Button (BTN)"
+
+        # Compute clockwise distance from dealer for remaining seats.
+        n = len(state.players)
+        dealer_idx = next((i for i, p in enumerate(state.players) if p.id == state.dealer_id), None)
         human_idx = state.players.index(human)
 
-        position_labels = {
-            0: "Small Blind (SB)",
-            1: "Big Blind (BB)",
-        }
-        if human_idx in position_labels:
-            return position_labels[human_idx]
+        if dealer_idx is None or n <= 3:
+            return "Middle Position"
 
-        # Remaining positions based on distance from BB
-        remaining = total - 2
-        dist_from_bb = (human_idx - 1) % total
-        if remaining <= 1:
-            return "Button (BTN)"
-        elif dist_from_bb == remaining - 1:
-            return "Button (BTN)"
-        elif dist_from_bb == remaining - 2:
+        dist = (human_idx - dealer_idx) % n
+        # dist 0=BTN, 1=SB, 2=BB already handled above
+        if dist == n - 1:
             return "Cutoff (CO)"
-        elif dist_from_bb <= 1:
-            return "Under the Gun (UTG)"
-        else:
+        elif n >= 6 and dist == n - 2:
             return "Middle Position (MP)"
+        else:
+            return "Under the Gun (UTG)"
 
     def _opponent_summary(self, state: GameState, skill_level: str) -> str:
         """

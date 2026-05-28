@@ -239,6 +239,8 @@ function PlayerSeat({
     .filter(Boolean)
     .join(" ");
 
+  const isCheckFlash = actionFlash?.action === "call" && actionFlash.amount === 0;
+
   const ACTION_LABELS: Record<string, string> = {
     fold: "Fold",
     call: "Call",
@@ -261,8 +263,8 @@ function PlayerSeat({
 
       {actionFlash && (
         <div className={`action-label action-label--${actionFlash.action}`}>
-          {ACTION_LABELS[actionFlash.action]}
-          {actionFlash.action !== "fold" && actionFlash.amount > 0 && (
+          {isCheckFlash ? "Check" : ACTION_LABELS[actionFlash.action]}
+          {!isCheckFlash && actionFlash.action !== "fold" && actionFlash.amount > 0 && (
             <span className="action-label__amount"> {actionFlash.amount}</span>
           )}
         </div>

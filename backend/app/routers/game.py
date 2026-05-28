@@ -86,13 +86,9 @@ async def submit_action(session_id: str, body: ActionRequest):
 
     serialized = game_manager.serialize_for_client(state)
 
-    # Broadcast the human's action for animation, then the updated state
-    await ws_manager.broadcast(session_id, {
-        "type": "player_acted",
-        "player_id": "human",
-        "action": body.action,
-        "amount": body.amount,
-    })
+    # player_acted for the human is broadcast inside apply_human_action, before
+    # AI turns run, so the animation fires at the right time.
+    # Broadcast the final state so HTTP client and WebSocket are in sync.
     await ws_manager.broadcast(session_id, {"type": "game_state", "data": serialized})
     await game_manager.save_to_redis(state)
 

@@ -205,11 +205,26 @@ class GameManager:
             p.is_folded = False
             p.is_allin = False
 
-        # Build the engine table. set_blind_pos is required before start_new_round
-        # so the engine knows which seats pay the blinds (bb_pos() is called
-        # internally). Rotation across hands is a Phase 3 enhancement.
+        # Rotate the dealer button one seat clockwise each hand.
+        n = len(state.players)
+        old_dealer_id = state.dealer_id
+        if old_dealer_id is None:
+            dealer_idx = 0
+        else:
+            prev_pos = next((i for i, p in enumerate(state.players) if p.id == old_dealer_id), None)
+            dealer_idx = 0 if prev_pos is None else (prev_pos + 1) % n
+
+        # Heads-up: dealer IS the SB (acts first preflop).
+        # 3+ players: SB is one seat left of dealer, BB is two seats left.
+        if n == 2:
+            sb_idx = dealer_idx
+            bb_idx = (dealer_idx + 1) % n
+        else:
+            sb_idx = (dealer_idx + 1) % n
+            bb_idx = (dealer_idx + 2) % n
+
         table = self._build_engine_table(state)
-        table.set_blind_pos(0, 1)
+        table.set_blind_pos(sb_idx, bb_idx)
 
         engine_state, messages = RoundManager.start_new_round(
             state.hand_number,
@@ -221,19 +236,14 @@ class GameManager:
         # Sync our state from the engine's initial state
         self._extract_state(state, engine_state, messages)
 
-        # Capture blind/dealer positions from the engine's blind_pos settings.
-        # sb_pos() and bb_pos() are authoritative (the engine just used them
-        # to post blinds). Dealer is the seat immediately before the SB.
+        # Set positions directly. dealer_idx is already computed above.
+        # sb_pos() / bb_pos() are authoritative for which seat posted blinds.
         t = engine_state["table"]
         seat_players = t.seats.players
-        num_seats = len(seat_players)
-        if num_seats > 0:
-            sb = t.sb_pos()
-            bb = t.bb_pos()
-            dealer = (sb - 1 + num_seats) % num_seats
-            state.small_blind_id = seat_players[sb].uuid
-            state.big_blind_id = seat_players[bb].uuid
-            state.dealer_id = seat_players[dealer].uuid
+        if seat_players:
+            state.dealer_id = state.players[dealer_idx].id
+            state.small_blind_id = seat_players[t.sb_pos()].uuid
+            state.big_blind_id = seat_players[t.bb_pos()].uuid
 
         # If the first actor is an AI, run their turns automatically
         if state.current_actor and not self._is_human_turn(state):
@@ -275,6 +285,18 @@ class GameManager:
             human.action_history.append(
                 {"street": state.street, "action": action, "amount": amount}
             )
+
+        # Broadcast the human's action flash NOW, before AI turns run.
+        # The route used to do this after apply_human_action returned, which
+        # meant the flash fired after all AI player_acted + game_state messages
+        # had already played — showing the animation on the wrong player.
+        if broadcast:
+            await broadcast(state.session_id, {
+                "type": "player_acted",
+                "player_id": "human",
+                "action": action,
+                "amount": amount,
+            })
 
         # If the human's action triggered an all-in runout, broadcast each
         # intermediate street so the player watches the board run out.
