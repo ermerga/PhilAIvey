@@ -220,18 +220,23 @@ class PhilTutor:
 
         # --- Hand evaluation ---
         eval_result = {}
+        preflop_desc = ""
         outs_result = {}
         pot_odds_result = {}
 
         if human.hole_cards:
             try:
-                eval_result = self._evaluator.evaluate(
-                    human.hole_cards, state.community_cards
-                )
                 if state.community_cards:
+                    # Post-flop: treys can evaluate accurately with a board
+                    eval_result = self._evaluator.evaluate(
+                        human.hole_cards, state.community_cards
+                    )
                     outs_result = self._evaluator.count_outs(
                         human.hole_cards, state.community_cards
                     )
+                else:
+                    # Preflop: treys can't evaluate without a board — use simple descriptor
+                    preflop_desc = self._preflop_desc(human.hole_cards)
                 call_amount = self._get_call_amount(state)
                 if call_amount > 0:
                     pot_odds_result = self._evaluator.pot_odds(call_amount, state.pot)
@@ -254,7 +259,9 @@ class PhilTutor:
             f"Board: {', '.join(state.community_cards) if state.community_cards else 'No community cards yet'} ({state.street})",
         ]
 
-        if eval_result:
+        if preflop_desc:
+            lines.append(f"Preflop hand type: {preflop_desc}")
+        elif eval_result:
             lines.append(
                 f"Hand strength: {eval_result.get('category', '?')} "
                 f"(top {eval_result.get('percentile', '?')}% of all hands)"
@@ -269,9 +276,11 @@ class PhilTutor:
             )
 
         call_amount = self._get_call_amount(state)
+        is_free_check = call_amount == 0
         lines.append(
             f"Pot: {state.pot} chips | "
-            f"To call: {call_amount} chips"
+            + ("No bet facing you — can check for free." if is_free_check
+               else f"To call: {call_amount} chips")
         )
 
         if pot_odds_result:
@@ -280,16 +289,34 @@ class PhilTutor:
                 f"({pot_odds_result.get('percentage', '?')}%)"
             )
 
+        # Available actions — critical for Phil to know check vs call
+        action_opts = []
+        for a in state.valid_actions:
+            if a["action"] == "fold":
+                action_opts.append("fold")
+            elif a["action"] == "call":
+                if a.get("amount", 0) == 0:
+                    action_opts.append("check (free)")
+                else:
+                    action_opts.append(f"call {a['amount']}")
+            elif a["action"] == "raise" and isinstance(a.get("amount"), dict):
+                lo = a["amount"]["min"]
+                hi = a["amount"]["max"]
+                action_opts.append(f"raise {lo}–{hi}")
+        if action_opts:
+            lines.append(f"Available actions: {' | '.join(action_opts)}")
+
+        players_in = sum(1 for p in state.players if not p.is_folded)
         lines += [
             f"Your stack: {human.stack} chips | Position: {position}",
-            f"Players still in hand: {sum(1 for p in state.players if not p.is_folded)}",
+            f"Players still in hand: {players_in} of {len(state.players)}",
             "",
             "=== WHAT YOU'VE OBSERVED ===",
             opp_summary,
         ]
 
         if action_log:
-            lines += ["", "=== ACTION THIS HAND ===", action_log]
+            lines += ["", "=== ACTION SO FAR THIS HAND ===", action_log]
 
         if trigger == "opening":
             lines += ["", "Give your opening coaching advice for this situation."]
@@ -297,6 +324,43 @@ class PhilTutor:
             lines += ["", f"Student asks: {trigger}"]
 
         return "\n".join(lines)
+
+    def _preflop_desc(self, hole_cards: list[str]) -> str:
+        """
+        Simple preflop hand descriptor used in place of the post-flop evaluator
+        (which requires a board and gives garbage output preflop).
+        Returns a human-readable label like "Pocket Aces", "Suited Connectors (AKs)", etc.
+        """
+        RANK_ORDER = "23456789TJQKA"
+        c1, c2 = hole_cards[0], hole_cards[1]
+        r1, r2 = c1[0].upper(), c2[0].upper()
+        s1, s2 = c1[1].lower(), c2[1].lower()
+
+        paired = r1 == r2
+        suited = s1 == s2
+        gap = abs(RANK_ORDER.index(r1) - RANK_ORDER.index(r2))
+        hi = r1 if RANK_ORDER.index(r1) >= RANK_ORDER.index(r2) else r2
+        lo = r2 if hi == r1 else r1
+        hand_str = f"{hi}{lo}{'s' if suited else 'o'}"
+
+        # Named pocket pairs
+        names = {"A": "Aces", "K": "Kings", "Q": "Queens", "J": "Jacks", "T": "Tens"}
+        if paired:
+            label = f"Pocket {names.get(r1, f'{r1}s')}"
+            strength = "premium" if r1 in "AKQJT" else ("strong" if r1 in "789" else "low")
+            return f"{label} ({strength} pocket pair)"
+
+        # Suited / offsuit descriptors
+        suit_tag = "suited" if suited else "offsuit"
+        if gap == 1:
+            return f"Suited Connectors ({hand_str})" if suited else f"Connected ({hand_str}, {suit_tag})"
+        if gap == 2:
+            return f"One-gapper ({hand_str}, {suit_tag})"
+        if hi == "A":
+            return f"Ace-x ({hand_str}, {suit_tag})"
+        if hi == "K":
+            return f"King-x ({hand_str}, {suit_tag})"
+        return f"Unconnected ({hand_str}, {suit_tag})"
 
     def _get_human(self, state: GameState) -> Optional[PlayerState]:
         return next((p for p in state.players if p.is_human), None)
@@ -341,16 +405,18 @@ class PhilTutor:
     def _opponent_summary(self, state: GameState, skill_level: str) -> str:
         """
         Build an opponent tendency summary filtered by skill level.
-        Beginners see plain language; intermediate/advanced see raw stats.
+        Includes ALL opponents (even those folded this hand) so Phil has
+        full historical context. Current fold state is noted inline.
         """
         lines = []
         for p in state.players:
-            if p.is_human or p.is_folded:
+            if p.is_human:
                 continue
 
+            folded_note = " (folded this hand)" if p.is_folded else ""
             total = len(p.action_history)
             if total == 0:
-                lines.append(f"  {p.name}: No data yet.")
+                lines.append(f"  {p.name}{folded_note}: No data yet.")
                 continue
 
             folds = sum(1 for a in p.action_history if a["action"] == "fold")
@@ -367,10 +433,10 @@ class PhilTutor:
                     tendency = "folds frequently — plays it safe"
                 else:
                     tendency = "calls often — likes to see cards"
-                lines.append(f"  {p.name}: {tendency}.")
+                lines.append(f"  {p.name}{folded_note}: {tendency}.")
             else:
                 lines.append(
-                    f"  {p.name}: fold {fold_pct}% | "
+                    f"  {p.name}{folded_note}: fold {fold_pct}% | "
                     f"call {round(calls/total*100)}% | "
                     f"raise {raise_pct}% "
                     f"({total} actions observed)"
@@ -380,12 +446,16 @@ class PhilTutor:
 
     def _recent_action_log(self, state: GameState) -> str:
         """
-        Build a short log of the most recent actions across all players.
-        Uses the last 3 actions from each player's session history.
+        Actions taken SO FAR in the current hand only (filtered by hand_number).
+        Older history has `hand` key; entries without it are from a previous
+        session before this field was added and are excluded.
         """
+        current_hand = state.hand_number
         entries = []
         for p in state.players:
-            for action in p.action_history[-3:]:
+            for action in p.action_history:
+                if action.get("hand") != current_hand:
+                    continue
                 entries.append(
                     f"  {p.name}: {action['action']}"
                     + (f" {action['amount']}" if action.get("amount") else "")

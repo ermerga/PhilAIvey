@@ -283,7 +283,7 @@ class GameManager:
         human = self._get_player(state, "human")
         if human:
             human.action_history.append(
-                {"street": state.street, "action": action, "amount": amount}
+                {"hand": state.hand_number, "street": prev_street, "action": action, "amount": amount}
             )
 
         # Broadcast the human's action flash NOW, before AI turns run.
@@ -433,6 +433,7 @@ class GameManager:
                 action, amount = self._stub_ai_action(state.valid_actions)
 
             prev_card_count = len(state.community_cards)
+            action_street = state.street
             engine_state, messages = RoundManager.apply_action(
                 state.engine_state, action, amount
             )
@@ -442,7 +443,7 @@ class GameManager:
             actor = self._get_player(state, actor_id)
             if actor:
                 actor.action_history.append(
-                    {"street": state.street, "action": action, "amount": amount}
+                    {"hand": state.hand_number, "street": action_street, "action": action, "amount": amount}
                 )
 
             # Broadcast the action so the UI can animate it
