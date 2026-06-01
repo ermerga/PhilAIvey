@@ -1,36 +1,39 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import type { ChatMessage } from "../types";
 
 const API_BASE = "/api";
 
 interface PhilPanelProps {
   sessionId: string;
   skillLevel: string;
-  philText: string;
-  isStreaming: boolean;
+  messages: ChatMessage[];
   isMyTurn: boolean;
+  onUserMessage: (msg: string) => void;
 }
 
 export function PhilPanel({
   sessionId,
   skillLevel,
-  philText,
-  isStreaming,
+  messages,
   isMyTurn,
+  onUserMessage,
 }: PhilPanelProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const messageEndRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to the bottom whenever Phil's text grows
+  const isStreaming = messages.some((m) => m.isStreaming);
+
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [philText]);
+  }, [messages]);
 
   async function handleSend() {
     const trimmed = input.trim();
     if (!trimmed || sending || isStreaming) return;
 
+    onUserMessage(trimmed);
     setSending(true);
     setInput("");
 
@@ -40,9 +43,8 @@ export function PhilPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed, skill_level: skillLevel }),
       });
-      // Phil's response streams back over WebSocket — nothing to do with the HTTP response
     } catch {
-      // Silently ignore — Phil will recover on next interaction
+      // Phil's response streams back over WebSocket; HTTP errors are silent
     } finally {
       setSending(false);
     }
@@ -66,19 +68,31 @@ export function PhilPanel({
         {isStreaming && <div style={styles.streamingBadge}>Speaking...</div>}
       </div>
 
-      {/* Message area */}
+      {/* Conversation thread */}
       <div style={styles.messageArea}>
-        {philText ? (
-          <div style={styles.messageText} className="phil-message">
-            <ReactMarkdown>{philText}</ReactMarkdown>
-            {isStreaming && <span style={styles.cursor}>▍</span>}
-          </div>
-        ) : (
+        {messages.length === 0 ? (
           <p style={styles.placeholder}>
             {isMyTurn
               ? "Phil is sizing up the situation..."
               : "Waiting for your turn..."}
           </p>
+        ) : (
+          messages.map((msg, i) =>
+            msg.role === "phil" ? (
+              <div key={i} style={styles.philRow}>
+                <div style={styles.philBubble} className="phil-message">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  {msg.isStreaming && <span style={styles.cursor}>▍</span>}
+                </div>
+              </div>
+            ) : (
+              <div key={i} style={styles.userRow}>
+                <div style={styles.userBubble}>
+                  <span style={styles.userText}>{msg.content}</span>
+                </div>
+              </div>
+            )
+          )
         )}
         <div ref={messageEndRef} />
       </div>
@@ -91,7 +105,7 @@ export function PhilPanel({
             ...(inputDisabled ? styles.inputDisabled : {}),
           }}
           type="text"
-          placeholder={isMyTurn ? "Ask Phil anything..." : "Wait for your turn"}
+          placeholder={isMyTurn ? "Reply to Phil..." : "Wait for your turn"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -105,7 +119,7 @@ export function PhilPanel({
           onClick={handleSend}
           disabled={inputDisabled}
         >
-          Ask
+          Send
         </button>
       </div>
     </div>
@@ -169,12 +183,38 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflowY: "auto",
     padding: "10px 14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
   },
-  messageText: {
-    margin: 0,
+  philRow: {
+    display: "flex",
+    justifyContent: "flex-start",
+  },
+  philBubble: {
+    maxWidth: "88%",
+    background: "#1a1a2e",
+    borderLeft: "3px solid #f0c040",
+    padding: "7px 12px",
+    borderRadius: "0 8px 8px 0",
     color: "#e2e8f0",
-    fontSize: "13px",
+    fontSize: "12px",
     lineHeight: "1.6",
+  },
+  userRow: {
+    display: "flex",
+    justifyContent: "flex-end",
+  },
+  userBubble: {
+    maxWidth: "80%",
+    background: "#2a2a4e",
+    padding: "7px 12px",
+    borderRadius: "8px 0 8px 8px",
+  },
+  userText: {
+    color: "#cbd5e1",
+    fontSize: "12px",
+    lineHeight: "1.5",
   },
   cursor: {
     display: "inline-block",

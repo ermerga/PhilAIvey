@@ -50,3 +50,9 @@ export interface ActionFlash {
   action: "fold" | "call" | "raise";
   amount: number;
 }
+
+export interface ChatMessage {
+  role: "phil" | "user";
+  content: string;
+  isStreaming?: boolean;
+}

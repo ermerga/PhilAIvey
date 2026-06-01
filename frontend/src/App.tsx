@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import type { ActionFlash, GameState } from "./types";
+import type { ActionFlash, ChatMessage, GameState } from "./types";
 import { newGame, submitAction, startHand } from "./api";
 import { useGameSocket } from "./hooks/useGameSocket";
 import { Table } from "./components/Table";
@@ -16,8 +16,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [thinkingPlayerId, setThinkingPlayerId] = useState<string | null>(null);
-  const [philText, setPhilText] = useState("");
-  const [isPhilStreaming, setIsPhilStreaming] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [actionFlash, setActionFlash] = useState<ActionFlash | null>(null);
 
   // useCallback keeps the function reference stable so the WebSocket hook
@@ -37,12 +36,28 @@ export default function App() {
   }, []);
 
   const handlePhilChunk = useCallback((content: string) => {
-    setIsPhilStreaming(true);
-    setPhilText((prev) => prev + content);
+    setChatMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === "phil" && last.isStreaming) {
+        return [...prev.slice(0, -1), { ...last, content: last.content + content }];
+      }
+      return [...prev, { role: "phil", content, isStreaming: true }];
+    });
   }, []);
 
   const handlePhilDone = useCallback(() => {
-    setIsPhilStreaming(false);
+    setChatMessages((prev) => {
+      if (!prev.length) return prev;
+      const last = prev[prev.length - 1];
+      if (last.role === "phil" && last.isStreaming) {
+        return [...prev.slice(0, -1), { ...last, isStreaming: false }];
+      }
+      return prev;
+    });
+  }, []);
+
+  const handleUserChatMessage = useCallback((msg: string) => {
+    setChatMessages((prev) => [...prev, { role: "user", content: msg }]);
   }, []);
 
   useGameSocket(sessionId, handleSocketUpdate, handleAiThinking, handlePlayerActed, handlePhilChunk, handlePhilDone);
@@ -54,8 +69,7 @@ export default function App() {
   async function handleStartGame() {
     setError(null);
     setLoading(true);
-    setPhilText("");
-    setIsPhilStreaming(false);
+    setChatMessages([]);
     try {
       const res = await newGame(numOpponents, skillLevel);
       setSessionId(res.session_id);
@@ -73,8 +87,7 @@ export default function App() {
   ) {
     if (!sessionId) return;
     setError(null);
-    setPhilText("");        // reset Phil's conversation for the new turn
-    setIsPhilStreaming(false);
+    setChatMessages([]);
     try {
       const updated = await submitAction(sessionId, action, amount, skillLevel);
       setGameState(updated);
@@ -93,8 +106,7 @@ export default function App() {
     const capturedSkillLevel = skillLevel;
     const timer = setTimeout(async () => {
       setError(null);
-      setPhilText("");
-      setIsPhilStreaming(false);
+      setChatMessages([]);
       setGameState((prev) => (prev ? { ...prev, is_hand_over: false } : prev));
       try {
         const updated = await startHand(capturedSessionId, capturedSkillLevel);
@@ -205,9 +217,9 @@ export default function App() {
               <PhilPanel
                 sessionId={sessionId}
                 skillLevel={skillLevel}
-                philText={philText}
-                isStreaming={isPhilStreaming}
+                messages={chatMessages}
                 isMyTurn={isMyTurn}
+                onUserMessage={handleUserChatMessage}
               />
             </div>
             <div style={styles.hudActions}>
