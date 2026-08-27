@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import type { ValidAction } from "../types";
 
 interface ActionBarProps {
@@ -21,30 +21,28 @@ export function ActionBar({ validActions, isMyTurn, onAction }: ActionBarProps) 
       : 0;
 
   const [raiseAmount, setRaiseAmount] = useState(raiseMin > 0 ? raiseMin : 0);
-  // Ref always holds the latest raise amount — prevents stale-closure bugs in the
-  // Raise button's onClick when React batches renders between slider move and click.
-  const raiseRef = useRef(raiseMin > 0 ? raiseMin : 0);
 
   // Reset to minimum whenever a new valid action set arrives (new hand / new street).
-  useEffect(() => {
+  // Done by comparing the incoming bounds during render — React's recommended
+  // alternative to a setState-in-effect for adjusting state when props change.
+  const raiseKey = `${raiseMin}:${raiseMax}`;
+  const [prevRaiseKey, setPrevRaiseKey] = useState(raiseKey);
+  if (raiseKey !== prevRaiseKey) {
+    setPrevRaiseKey(raiseKey);
     if (raiseMin > 0) {
-      raiseRef.current = raiseMin;
       setRaiseAmount(raiseMin);
     }
-  }, [raiseMin, raiseMax]);
+  }
 
   const clamped = Math.min(Math.max(raiseAmount, raiseMin || 0), raiseMax || 0);
-  // Keep ref always current with the rendered value.
-  raiseRef.current = clamped;
 
   function setAmount(v: number) {
     const safe = Math.min(Math.max(v, raiseMin), raiseMax);
-    raiseRef.current = safe;
     setRaiseAmount(safe);
   }
 
   function submitRaise() {
-    onAction("raise", raiseRef.current);
+    onAction("raise", clamped);
   }
 
   const callAmount =
