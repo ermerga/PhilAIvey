@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import type { CSSProperties } from "react";
 import type { ActionFlash, GameState, Player } from "../types";
+import { humanSeat, aiSeats, puckAnchor, type Point } from "../lib/seatLayout";
 
 interface TableProps {
   gameState: GameState;
@@ -26,8 +28,8 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
 
   // ---------------------------------------------------------------------------
   // Community card deal animation
-  // Track how many cards were visible last render. When more cards appear,
-  // mark which indices are "new" so we can stagger the deal animation.
+  // Track how many cards were visible last render. When more appear, mark the
+  // new indices so we can stagger the deal.
   // ---------------------------------------------------------------------------
   const prevCardCountRef = useRef(community_cards.length);
   const [animRange, setAnimRange] = useState<{ start: number; end: number } | null>(null);
@@ -37,12 +39,10 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
     const curr = community_cards.length;
     if (curr > prev) {
       setAnimRange({ start: prev, end: curr - 1 });
-      // Clear the animation classes after they finish (0.72s × 5 cards + buffer)
       const timeout = setTimeout(() => setAnimRange(null), 1500);
       prevCardCountRef.current = curr;
       return () => clearTimeout(timeout);
     }
-    // Cards were cleared (new hand starting) — just reset the ref
     prevCardCountRef.current = curr;
   }, [community_cards.length]);
 
@@ -59,18 +59,14 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
     prevIsHandOverRef.current = is_hand_over;
 
     if (!is_hand_over) {
-      // New hand started — reset everything
       setWinnerAnimActive(false);
       setShowMuckPrompt(false);
       setMuckChosen(false);
       return;
     }
-    // Only animate on transition false → true, not on cold mount with is_hand_over=true
     if (prevIsHandOver) return;
-    if (hand_number === 0) return; // fresh game, nothing to animate yet
-    // Hand just ended — play winner animation
+    if (hand_number === 0) return;
     setWinnerAnimActive(true);
-    // Show the show/muck prompt when the human is the sole winner (won by fold)
     if (winners.length === 1 && winners[0] === human?.id) {
       setShowMuckPrompt(true);
     }
@@ -78,25 +74,29 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
   }, [is_hand_over]);
 
   // ---------------------------------------------------------------------------
-  // Seat layout helpers
+  // Seat geometry — every player gets a point on the table; pucks derive from
+  // those points. Changing which point a puck sits on between hands makes it
+  // slide across the felt (CSS transition on .puck).
   // ---------------------------------------------------------------------------
   const humanIdx = players.findIndex((p) => p.is_human);
-  const aiPlayers = [
-    ...players.slice(humanIdx + 1),
-    ...players.slice(0, humanIdx),
-  ].filter((p) => !p.is_human);
+  const orderedAi: Player[] =
+    humanIdx >= 0
+      ? [...players.slice(humanIdx + 1), ...players.slice(0, humanIdx)].filter(
+          (p) => !p.is_human,
+        )
+      : players.filter((p) => !p.is_human);
 
-  const CLOCKWISE_SEATS: Record<number, string[]> = {
-    1: ["p3"],
-    2: ["p1", "p2"],
-    3: ["p1", "p3", "p2"],
-    4: ["p4", "p1", "p2", "p5"],
-    5: ["p4", "p1", "p3", "p2", "p5"],
-  };
-  function seatClass(idx: number): string {
-    const seats = CLOCKWISE_SEATS[aiPlayers.length] ?? aiPlayers.map((_, i) => `p${i + 1}`);
-    return `seat-pos--${seats[idx] ?? `p${idx + 1}`}`;
-  }
+  const aiPoints = aiSeats(orderedAi.length);
+
+  const seatOf = new Map<string, Point>();
+  if (human) seatOf.set(human.id, humanSeat());
+  orderedAi.forEach((p, i) => seatOf.set(p.id, aiPoints[i]));
+
+  const pucks: { role: "D" | "SB" | "BB"; className: string; playerId: string | null }[] = [
+    { role: "D", className: "puck--d", playerId: dealer_id },
+    { role: "SB", className: "puck--sb", playerId: small_blind_id },
+    { role: "BB", className: "puck--bb", playerId: big_blind_id },
+  ];
 
   return (
     <div>
@@ -107,24 +107,26 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
         </span>
       </div>
 
-      {/* Oval table — always rendered */}
       <div className="table-viewport">
         <div className="table-wrap">
           <div className="table-felt" />
 
-          {/* Community cards + pot */}
+          {/* Center: street label + community cards + pot */}
           <div className="table-center">
-            <div style={styles.streetLabel}>
+            <div className="street-label">
               {is_hand_over ? "" : street.toUpperCase()}
             </div>
-            <div style={styles.communityCards}>
+            <div className="community-cards">
               {community_cards.map((card, i) => {
-                const isNew = animRange !== null && i >= animRange.start && i <= animRange.end;
+                const isNew =
+                  animRange !== null && i >= animRange.start && i <= animRange.end;
                 const delay = isNew ? (i - animRange!.start) * 0.12 : 0;
                 return (
                   <div
                     key={i}
-                    className={`community-card-wrapper${isNew ? " community-card-wrapper--dealing" : ""}`}
+                    className={`community-card-wrapper${
+                      isNew ? " community-card-wrapper--dealing" : ""
+                    }`}
                     style={isNew ? { animationDelay: `${delay}s` } : undefined}
                   >
                     <CardDisplay card={card} />
@@ -133,53 +135,71 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
               })}
             </div>
             {!is_hand_over && pot > 0 && (
-              <div style={styles.potChip}>
-                <span style={styles.potLabel}>Pot</span>
-                {pot} chips
+              <div className="pot-chip">
+                <span className="pot-chip__label">Pot</span>
+                <span className="pot-chip__amount">{pot.toLocaleString()}</span>
               </div>
             )}
           </div>
 
+          {/* Dealer + blind pucks, resting on the felt */}
+          {pucks.map(({ role, className, playerId }) => {
+            if (!playerId) return null;
+            const seat = seatOf.get(playerId);
+            if (!seat) return null;
+            const anchor = puckAnchor(seat, role);
+            return (
+              <div
+                key={role}
+                className={`puck ${className}`}
+                style={
+                  {
+                    "--puck-x": `${anchor.xPct}%`,
+                    "--puck-y": `${anchor.yPct}%`,
+                  } as CSSProperties
+                }
+              >
+                {role}
+              </div>
+            );
+          })}
+
           {/* Human seat */}
           {human && (
-            <div className="seat-pos seat-pos--human">
-              <PlayerSeat
-                player={human}
-                isCurrentActor={human.id === current_actor}
-                isWinner={winners.includes(human.id)}
-                isThinking={human.id === thinkingPlayerId}
-                isDealer={human.id === dealer_id}
-                isSB={human.id === small_blind_id}
-                isBB={human.id === big_blind_id}
-                actionFlash={actionFlash?.playerId === human.id ? actionFlash : null}
-                winnerAnimActive={winnerAnimActive}
-                showMuckPrompt={showMuckPrompt && !muckChosen}
-                muckChosen={muckChosen}
-                onShow={() => setShowMuckPrompt(false)}
-                onMuck={() => { setMuckChosen(true); setShowMuckPrompt(false); }}
-              />
-            </div>
+            <PlayerSeat
+              player={human}
+              pos={humanSeat()}
+              isCurrentActor={human.id === current_actor}
+              isWinner={winners.includes(human.id)}
+              isThinking={human.id === thinkingPlayerId}
+              actionFlash={actionFlash?.playerId === human.id ? actionFlash : null}
+              winnerAnimActive={winnerAnimActive}
+              showMuckPrompt={showMuckPrompt && !muckChosen}
+              muckChosen={muckChosen}
+              onShow={() => setShowMuckPrompt(false)}
+              onMuck={() => {
+                setMuckChosen(true);
+                setShowMuckPrompt(false);
+              }}
+            />
           )}
 
           {/* AI seats */}
-          {aiPlayers.map((player, idx) => (
-            <div key={player.id} className={`seat-pos ${seatClass(idx)}`}>
-              <PlayerSeat
-                player={player}
-                isCurrentActor={player.id === current_actor}
-                isWinner={winners.includes(player.id)}
-                isThinking={player.id === thinkingPlayerId}
-                isDealer={player.id === dealer_id}
-                isSB={player.id === small_blind_id}
-                isBB={player.id === big_blind_id}
-                actionFlash={actionFlash?.playerId === player.id ? actionFlash : null}
-                winnerAnimActive={winnerAnimActive}
-                showMuckPrompt={false}
-                muckChosen={false}
-                onShow={() => {}}
-                onMuck={() => {}}
-              />
-            </div>
+          {orderedAi.map((player, idx) => (
+            <PlayerSeat
+              key={player.id}
+              player={player}
+              pos={aiPoints[idx]}
+              isCurrentActor={player.id === current_actor}
+              isWinner={winners.includes(player.id)}
+              isThinking={player.id === thinkingPlayerId}
+              actionFlash={actionFlash?.playerId === player.id ? actionFlash : null}
+              winnerAnimActive={winnerAnimActive}
+              showMuckPrompt={false}
+              muckChosen={false}
+              onShow={() => {}}
+              onMuck={() => {}}
+            />
           ))}
         </div>
       </div>
@@ -193,12 +213,10 @@ export function Table({ gameState, thinkingPlayerId, actionFlash }: TableProps) 
 
 interface PlayerSeatProps {
   player: Player;
+  pos: Point;
   isCurrentActor: boolean;
   isWinner: boolean;
   isThinking: boolean;
-  isDealer: boolean;
-  isSB: boolean;
-  isBB: boolean;
   actionFlash: ActionFlash | null;
   winnerAnimActive: boolean;
   showMuckPrompt: boolean;
@@ -209,12 +227,10 @@ interface PlayerSeatProps {
 
 function PlayerSeat({
   player,
+  pos,
   isCurrentActor,
   isWinner,
   isThinking,
-  isDealer,
-  isSB,
-  isBB,
   actionFlash,
   winnerAnimActive,
   showMuckPrompt,
@@ -222,93 +238,88 @@ function PlayerSeat({
   onShow,
   onMuck,
 }: PlayerSeatProps) {
-  const flashClass = actionFlash ? `seat-card--flash-${actionFlash.action}` : "";
+  const flashClass = actionFlash ? `seat--flash-${actionFlash.action}` : "";
 
-  // Winner announced = gold pulse; loser dim = fade to 38%
-  const winnerAnnouncedClass = winnerAnimActive && isWinner ? "seat-card--winner-announced" : "";
-  const loserDimClass = winnerAnimActive && !isWinner && !player.is_folded ? "seat-card--loser-dim" : "";
-
-  const cardClasses = [
-    "seat-card",
-    flashClass || (isThinking ? "seat-card--purple" : isCurrentActor ? "seat-card--gold" : ""),
-    player.is_folded ? "seat-card--folded" : "",
-    isWinner && !winnerAnimActive ? "seat-card--winner" : "",
-    winnerAnnouncedClass,
-    loserDimClass,
+  const seatClasses = [
+    "seat",
+    flashClass || (isThinking ? "seat--thinking" : isCurrentActor ? "seat--acting" : ""),
+    player.is_folded ? "seat--folded" : "",
+    isWinner && !winnerAnimActive ? "seat--winner" : "",
+    winnerAnimActive && isWinner ? "seat--winner-announced" : "",
+    winnerAnimActive && !isWinner && !player.is_folded ? "seat--loser-dim" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   const isCheckFlash = actionFlash?.action === "call" && actionFlash.amount === 0;
-
   const ACTION_LABELS: Record<string, string> = {
     fold: "Fold",
     call: "Call",
     raise: "Raise",
   };
 
+  // Single status line under name/stack.
+  let tag: string | null = null;
+  if (player.is_folded) tag = "Folded";
+  else if (player.is_allin) tag = "All-in";
+  else if (isThinking) tag = "Thinking";
+  else if (isCurrentActor) tag = "Acting";
+
   return (
-    <div className={cardClasses} style={{ position: "relative" }}>
-      {isDealer && <div className="dealer-btn">D</div>}
+    <div
+      className={seatClasses}
+      style={
+        { "--seat-x": `${pos.xPct}%`, "--seat-y": `${pos.yPct}%` } as CSSProperties
+      }
+    >
+      {winnerAnimActive && isWinner && <div className="winner-badge">Winner</div>}
 
-      {/* Winner badge — bounces in above the card */}
-      {winnerAnimActive && isWinner && (
-        <div className="winner-badge">Winner!</div>
-      )}
+      {showMuckPrompt && <ShowMuckPrompt onShow={onShow} onMuck={onMuck} />}
 
-      {/* Show/muck prompt — only for human when they won by fold */}
-      {showMuckPrompt && (
-        <ShowMuckPrompt onShow={onShow} onMuck={onMuck} />
-      )}
-
-      {actionFlash && (
-        <div className={`action-label action-label--${actionFlash.action}`}>
-          {isCheckFlash ? "Check" : ACTION_LABELS[actionFlash.action]}
-          {!isCheckFlash && actionFlash.action !== "fold" && actionFlash.amount > 0 && (
-            <span className="action-label__amount"> {actionFlash.amount}</span>
-          )}
-        </div>
-      )}
-
-      <div style={styles.seatName}>{player.name}</div>
-      <div style={styles.seatStack}>{player.stack} chips</div>
-
-      <div className="seat-badges">
-        {isSB && <span className="badge badge--sb">SB</span>}
-        {isBB && <span className="badge badge--bb">BB</span>}
-        {!isSB && !isBB && isDealer && <span className="badge badge--btn">BTN</span>}
-        {isThinking && <span className="badge badge--thinking">Thinking…</span>}
-        {isCurrentActor && !isThinking && <span className="badge badge--acting">Acting</span>}
-        {player.is_folded && <span className="badge badge--folded">Folded</span>}
-        {player.is_allin && <span className="badge badge--allin">All-in</span>}
-        {isWinner && <span className="badge badge--winner">Winner</span>}
-      </div>
-
-      {/* Hole cards */}
-      <div style={styles.holeCards}>
+      {/* Hole cards sit above the plate */}
+      <div className="seat-hole">
         {player.hole_cards.length > 0 ? (
           player.hole_cards.map((card, i) => (
             <CardDisplay
               key={i}
               card={card}
+              mini
               className={muckChosen ? "card--muck" : undefined}
             />
           ))
         ) : (
-          !player.is_human && !player.is_folded && (
+          !player.is_human &&
+          !player.is_folded && (
             <>
-              <CardBack />
-              <CardBack />
+              <CardBack mini />
+              <CardBack mini />
             </>
           )
         )}
+      </div>
+
+      <div className="seat-plate">
+        {actionFlash && (
+          <div className={`action-label action-label--${actionFlash.action}`}>
+            {isCheckFlash ? "Check" : ACTION_LABELS[actionFlash.action]}
+            {!isCheckFlash &&
+              actionFlash.action !== "fold" &&
+              actionFlash.amount > 0 && (
+                <span className="action-label__amount"> {actionFlash.amount}</span>
+              )}
+          </div>
+        )}
+
+        <div className="seat-name">{player.name}</div>
+        <div className="seat-stack">{player.stack.toLocaleString()}</div>
+        {tag && <span className="seat-tag">{tag}</span>}
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ShowMuckPrompt — compact prompt above the human's seat when they win by fold
+// ShowMuckPrompt
 // ---------------------------------------------------------------------------
 
 function ShowMuckPrompt({ onShow, onMuck }: { onShow: () => void; onMuck: () => void }) {
@@ -316,10 +327,16 @@ function ShowMuckPrompt({ onShow, onMuck }: { onShow: () => void; onMuck: () => 
     <div className="show-muck-prompt">
       <div className="show-muck-prompt__title">Show cards?</div>
       <div className="show-muck-prompt__buttons">
-        <button className="show-muck-prompt__btn show-muck-prompt__btn--show" onClick={onShow}>
+        <button
+          className="show-muck-prompt__btn show-muck-prompt__btn--show"
+          onClick={onShow}
+        >
           Show
         </button>
-        <button className="show-muck-prompt__btn show-muck-prompt__btn--muck" onClick={onMuck}>
+        <button
+          className="show-muck-prompt__btn show-muck-prompt__btn--muck"
+          onClick={onMuck}
+        >
           Muck
         </button>
       </div>
@@ -331,131 +348,60 @@ function ShowMuckPrompt({ onShow, onMuck }: { onShow: () => void; onMuck: () => 
 // CardDisplay — a single face-up card
 // ---------------------------------------------------------------------------
 
-function CardDisplay({ card, className }: { card: string; className?: string }) {
+function CardDisplay({
+  card,
+  mini,
+  className,
+}: {
+  card: string;
+  mini?: boolean;
+  className?: string;
+}) {
   const rank = card.slice(0, -1);
   const suit = card.slice(-1);
-
-  const suitSymbol: Record<string, string> = {
-    h: "♥",
-    d: "♦",
-    s: "♠",
-    c: "♣",
-  };
+  const suitSymbol: Record<string, string> = { h: "♥", d: "♦", s: "♠", c: "♣" };
   const isRed = suit === "h" || suit === "d";
 
+  const classes = [
+    "pcard",
+    isRed ? "pcard--red" : "pcard--black",
+    mini ? "pcard--mini" : "",
+    className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div
-      className={className}
-      style={{ ...styles.card, color: isRed ? "#dc2626" : "#111" }}
-    >
-      <div style={styles.cardRank}>{rank}</div>
-      <div style={styles.cardSuit}>{suitSymbol[suit] ?? suit}</div>
+    <div className={classes}>
+      <div className="pcard__rank">{rank}</div>
+      <div className="pcard__suit">{suitSymbol[suit] ?? suit}</div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// CardBack — face-down placeholder for AI hands
+// CardBack — face-down placeholder
 // ---------------------------------------------------------------------------
 
-function CardBack() {
-  return (
-    <div
-      style={{
-        ...styles.card,
-        background: "linear-gradient(135deg, #1e3a8a, #3730a3)",
-        color: "transparent",
-      }}
-    />
-  );
+function CardBack({ mini }: { mini?: boolean }) {
+  return <div className={`pcard pcard--back${mini ? " pcard--mini" : ""}`} />;
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Styles — only the hand-info bar; everything else is in index.css
 // ---------------------------------------------------------------------------
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   handInfo: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
-    color: "#ccc",
-    fontSize: "13px",
-    fontWeight: "bold",
-    padding: "0 8px 8px",
-    maxWidth: "620px",
-    margin: "0 auto",
+    fontSize: "12px",
+    fontWeight: 600,
+    padding: "10px 8px 0",
   },
   handNum: {
-    color: "#94a3b8",
-  },
-  streetLabel: {
-    color: "#f0c040",
-    fontSize: "10px",
-    fontWeight: 800,
-    letterSpacing: "3px",
-    textTransform: "uppercase",
-    opacity: 0.75,
-  },
-  communityCards: {
-    display: "flex",
-    gap: "5px",
-  },
-  potChip: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    background: "rgba(0,0,0,0.4)",
-    borderRadius: "20px",
-    padding: "4px 12px",
-    fontSize: "12px",
-    fontWeight: 700,
-    color: "#e2e8f0",
-  },
-  potLabel: {
-    color: "#64748b",
-    fontSize: "10px",
-    fontWeight: 400,
-    marginRight: "2px",
-  },
-  seatName: {
-    fontSize: "12px",
-    fontWeight: 700,
-    color: "#e2e8f0",
-  },
-  seatStack: {
-    fontSize: "11px",
-    color: "#64748b",
-    marginTop: "1px",
-  },
-  holeCards: {
-    display: "flex",
-    gap: "3px",
-    marginTop: "3px",
-    justifyContent: "center",
-  },
-  card: {
-    width: "28px",
-    height: "38px",
-    borderRadius: "3px",
-    fontSize: "9px",
-    fontWeight: 800,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#fff",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
-    lineHeight: 1,
-    gap: 0,
-    userSelect: "none",
-  },
-  cardRank: {
-    fontSize: "11px",
-    lineHeight: 1,
-  },
-  cardSuit: {
-    fontSize: "9px",
-    lineHeight: 1,
+    color: "var(--muted)",
+    letterSpacing: "0.04em",
   },
 };

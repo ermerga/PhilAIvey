@@ -96,7 +96,7 @@ describe("Table", () => {
     expect(screen.queryByText("PREFLOP")).toBeNull();
   });
 
-  it("applies gold glow class to human seat when it is the human's turn", () => {
+  it("applies the acting (brass lamp) class to the human seat when it is the human's turn", () => {
     const { container } = render(
       <Table
         gameState={makeGameState({ current_actor: "human" })}
@@ -104,10 +104,10 @@ describe("Table", () => {
         actionFlash={null}
       />
     );
-    expect(container.querySelector(".seat-card--gold")).toBeTruthy();
+    expect(container.querySelector(".seat--acting")).toBeTruthy();
   });
 
-  it("applies purple glow class to the thinking AI's seat", () => {
+  it("applies the thinking class to the thinking AI's seat", () => {
     const { container } = render(
       <Table
         gameState={makeGameState({ current_actor: "ai_0" })}
@@ -115,7 +115,7 @@ describe("Table", () => {
         actionFlash={null}
       />
     );
-    expect(container.querySelector(".seat-card--purple")).toBeTruthy();
+    expect(container.querySelector(".seat--thinking")).toBeTruthy();
   });
 
   it("does not show winner badge on initial render (requires state transition)", () => {
@@ -130,8 +130,8 @@ describe("Table", () => {
     expect(container.querySelector(".winner-badge")).toBeNull();
   });
 
-  it("shows position badges (SB, BB, D) on the correct seats", () => {
-    render(
+  it("renders the dealer and blind pucks on the felt", () => {
+    const { container } = render(
       <Table
         gameState={makeGameState()}
         thinkingPlayerId={null}
@@ -142,5 +142,17 @@ describe("Table", () => {
     expect(screen.getByText("BB")).toBeTruthy();
     expect(screen.getByText("SB")).toBeTruthy();
     expect(screen.getByText("D")).toBeTruthy();
+    expect(container.querySelectorAll(".puck")).toHaveLength(3);
+  });
+
+  it("omits a puck when its blind/dealer id is not set", () => {
+    const { container } = render(
+      <Table
+        gameState={makeGameState({ dealer_id: null, small_blind_id: null })}
+        thinkingPlayerId={null}
+        actionFlash={null}
+      />
+    );
+    expect(container.querySelectorAll(".puck")).toHaveLength(1); // only BB
   });
 });
