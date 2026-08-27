@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import type { ValidAction } from "../types";
 
 interface ActionBarProps {
@@ -21,30 +21,28 @@ export function ActionBar({ validActions, isMyTurn, onAction }: ActionBarProps) 
       : 0;
 
   const [raiseAmount, setRaiseAmount] = useState(raiseMin > 0 ? raiseMin : 0);
-  // Ref always holds the latest raise amount — prevents stale-closure bugs in the
-  // Raise button's onClick when React batches renders between slider move and click.
-  const raiseRef = useRef(raiseMin > 0 ? raiseMin : 0);
 
   // Reset to minimum whenever a new valid action set arrives (new hand / new street).
-  useEffect(() => {
+  // Done by comparing the incoming bounds during render — React's recommended
+  // alternative to a setState-in-effect for adjusting state when props change.
+  const raiseKey = `${raiseMin}:${raiseMax}`;
+  const [prevRaiseKey, setPrevRaiseKey] = useState(raiseKey);
+  if (raiseKey !== prevRaiseKey) {
+    setPrevRaiseKey(raiseKey);
     if (raiseMin > 0) {
-      raiseRef.current = raiseMin;
       setRaiseAmount(raiseMin);
     }
-  }, [raiseMin, raiseMax]);
+  }
 
   const clamped = Math.min(Math.max(raiseAmount, raiseMin || 0), raiseMax || 0);
-  // Keep ref always current with the rendered value.
-  raiseRef.current = clamped;
 
   function setAmount(v: number) {
     const safe = Math.min(Math.max(v, raiseMin), raiseMax);
-    raiseRef.current = safe;
     setRaiseAmount(safe);
   }
 
   function submitRaise() {
-    onAction("raise", raiseRef.current);
+    onAction("raise", clamped);
   }
 
   const callAmount =
@@ -149,13 +147,13 @@ const styles: Record<string, React.CSSProperties> = {
   bar: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
-    padding: "12px 14px 14px",
+    gap: "10px",
+    padding: "14px 16px",
     height: "100%",
     justifyContent: "center",
   },
   waiting: {
-    color: "#888",
+    color: "var(--muted)",
     fontStyle: "italic",
     fontSize: "14px",
     textAlign: "center",
@@ -167,87 +165,93 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btn: {
     padding: "12px 20px",
-    fontSize: "15px",
-    fontWeight: "bold",
-    border: "none",
-    borderRadius: "8px",
+    fontSize: "14px",
+    fontWeight: 600,
+    border: "1px solid transparent",
+    borderRadius: "var(--r-md)",
     cursor: "pointer",
-    letterSpacing: "0.4px",
+    letterSpacing: "0.01em",
     whiteSpace: "nowrap",
   },
   fold: {
-    backgroundColor: "#7f1d1d",
-    color: "#fff",
+    background: "#241412",
+    color: "#E7B7B2",
+    borderColor: "#4A2420",
   },
   call: {
-    backgroundColor: "#1e3a5f",
-    color: "#fff",
+    background: "var(--room)",
+    color: "var(--text)",
+    borderColor: "var(--line)",
     flex: 1,
   },
   callAllin: {
-    backgroundColor: "#7c3a00",
-    color: "#fed7aa",
-    letterSpacing: "0.6px",
+    background: "#2E1D0C",
+    color: "#F0CF9C",
+    borderColor: "var(--brass-dim)",
   },
   raise: {
-    backgroundColor: "#14532d",
-    color: "#fff",
+    background: "linear-gradient(180deg, #D8A552, var(--brass))",
+    color: "#21160A",
     width: "100%",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "6px",
-    fontSize: "15px",
+    gap: "8px",
+    fontSize: "14px",
   },
   raiseAmt: {
-    color: "#86efac",
-    fontWeight: 900,
-    fontSize: "16px",
+    fontFamily: "var(--f-num)",
+    fontVariantNumeric: "tabular-nums",
+    color: "#3A2A12",
+    fontWeight: 600,
+    fontSize: "15px",
   },
   raiseSection: {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
-    paddingTop: "6px",
-    borderTop: "1px solid #2a2a4e",
+    gap: "8px",
+    paddingTop: "8px",
+    borderTop: "1px solid var(--line)",
   },
   presets: {
     display: "flex",
-    gap: "6px",
+    gap: "8px",
   },
   preset: {
     flex: 1,
-    padding: "5px 0",
+    padding: "6px 0",
     fontSize: "12px",
-    fontWeight: "bold",
-    backgroundColor: "transparent",
-    border: "1px solid #2a2a4e",
-    borderRadius: "6px",
-    color: "#94a3b8",
+    fontWeight: 500,
+    background: "transparent",
+    border: "1px solid var(--line)",
+    borderRadius: "var(--r-sm)",
+    color: "var(--muted)",
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
   sliderRow: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
+    gap: "10px",
   },
   slider: {
     flex: 1,
     cursor: "pointer",
-    accentColor: "#14532d",
+    accentColor: "var(--brass)",
     minWidth: 0,
   },
   amountInput: {
-    width: "64px",
+    width: "68px",
     flexShrink: 0,
-    padding: "4px 6px",
+    padding: "5px 6px",
+    fontFamily: "var(--f-num)",
+    fontVariantNumeric: "tabular-nums",
     fontSize: "13px",
-    fontWeight: "bold",
-    backgroundColor: "#1a1a2e",
-    border: "1px solid #3a3a5e",
-    borderRadius: "6px",
-    color: "#86efac",
+    fontWeight: 500,
+    background: "var(--panel-hi)",
+    border: "1px solid var(--line)",
+    borderRadius: "var(--r-sm)",
+    color: "var(--text)",
     textAlign: "center",
     outline: "none",
   },
